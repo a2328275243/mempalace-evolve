@@ -105,6 +105,7 @@ class MemPalace:
         *,
         limit: int = 5,
         room: str | None = None,
+        threshold: float = 0.8,
     ) -> list[dict[str, Any]]:
         """Search memories by semantic similarity.
 
@@ -112,6 +113,8 @@ class MemPalace:
             query: Natural language query.
             limit: Max results to return.
             room: Optional room filter.
+            threshold: Max distance to include (0-1, lower = more similar).
+                       Default 0.8 filters out clearly irrelevant results.
 
         Returns:
             List of matching memories with content and metadata.
@@ -140,7 +143,8 @@ class MemPalace:
             metas = results["metadatas"][0] if results.get("metadatas") else [{}] * len(docs)
             dists = results["distances"][0] if results.get("distances") else [0.0] * len(docs)
             for doc, meta, dist in zip(docs, metas, dists):
-                output.append({"content": doc, "metadata": meta, "distance": dist})
+                if dist <= threshold:
+                    output.append({"content": doc, "metadata": meta, "distance": dist})
         return output
 
     def forget(self, drawer_id: str) -> bool:
