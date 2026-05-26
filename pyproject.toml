@@ -27,19 +27,20 @@ dependencies = [
 
 [project.optional-dependencies]
 api = ["fastapi>=0.100.0", "uvicorn>=0.20.0"]
+mcp = ["fastmcp>=2.0.0"]
 langchain = ["langchain-core>=0.1.0"]
-mcp = []  # MCP adapter uses stdlib only
-all = ["mempalace-evolve[api,langchain]"]
+all = ["mempalace-evolve[api,mcp,langchain]"]
 dev = ["pytest>=7.0", "pytest-asyncio", "httpx", "ruff"]
 
 [project.urls]
-Homepage = "https://github.com/DreamSeed/mempalace-evolve"
-Repository = "https://github.com/DreamSeed/mempalace-evolve"
-Issues = "https://github.com/DreamSeed/mempalace-evolve/issues"
+Homepage = "https://github.com/a2328275243/mempalace-evolve"
+Repository = "https://github.com/a2328275243/mempalace-evolve"
+Issues = "https://github.com/a2328275243/mempalace-evolve/issues"
 
 [project.scripts]
 mempalace = "mempalace_evolve.cli:main"
 mempalace-server = "mempalace_evolve.adapters.rest_api:serve"
+mempalace-mcp = "mempalace_evolve.adapters.mcp_server:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/mempalace_evolve"]
