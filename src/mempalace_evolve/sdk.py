@@ -74,14 +74,24 @@ class MemPalace:
         Returns:
             The drawer ID of the stored memory.
         """
-        store = self._get_chroma()
-        meta = {
-            "wing": self._wing,
-            "room": room,
-            "source_file": source,
-            **(metadata or {}),
-        }
-        drawer_id = store.add_drawer(content, meta)
+        from mempalace_evolve.core.chroma_helper import add_drawer, _make_drawer_id
+
+        collection = self._get_collection()
+        if collection is None:
+            raise RuntimeError("Failed to initialize ChromaDB collection")
+
+        chunk_index = 0
+        add_drawer(
+            collection,
+            wing=self._wing,
+            room=room,
+            content=content,
+            source_file=source or "sdk",
+            chunk_index=chunk_index,
+            added_by="sdk",
+            extra_meta=metadata,
+        )
+        drawer_id = _make_drawer_id(self._wing, room, source or "sdk", chunk_index)
         logger.debug("Stored memory %s in %s/%s", drawer_id, self._wing, room)
         return drawer_id
 
@@ -102,16 +112,43 @@ class MemPalace:
         Returns:
             List of matching memories with content and metadata.
         """
-        store = self._get_chroma()
+        collection = self._get_collection()
+        if collection is None:
+            return []
+
         where = {"wing": self._wing}
         if room:
-            where["room"] = room
-        return store.search(query, n_results=limit, where=where)
+            where = {"$and": [{"wing": self._wing}, {"room": room}]}
+
+        try:
+            results = collection.query(
+                query_texts=[query],
+                n_results=limit,
+                where=where,
+            )
+        except Exception as e:
+            logger.warning("Recall failed: %s", e)
+            return []
+
+        output = []
+        if results and results.get("documents"):
+            docs = results["documents"][0]
+            metas = results["metadatas"][0] if results.get("metadatas") else [{}] * len(docs)
+            dists = results["distances"][0] if results.get("distances") else [0.0] * len(docs)
+            for doc, meta, dist in zip(docs, metas, dists):
+                output.append({"content": doc, "metadata": meta, "distance": dist})
+        return output
 
     def forget(self, drawer_id: str) -> bool:
         """Delete a memory by ID."""
-        store = self._get_chroma()
-        return store.delete_drawer(drawer_id)
+        collection = self._get_collection()
+        if collection is None:
+            return False
+        try:
+            collection.delete(ids=[drawer_id])
+            return True
+        except Exception:
+            return False
 
     # ------------------------------------------------------------------
     # Knowledge Graph
@@ -149,10 +186,10 @@ class MemPalace:
     # Internals
     # ------------------------------------------------------------------
 
-    def _get_chroma(self):
+    def _get_collection(self):
         if self._chroma is None:
-            from mempalace_evolve.core.chroma_helper import ChromaStore
-            self._chroma = ChromaStore(str(self._path / "palace"))
+            from mempalace_evolve.core.chroma_helper import get_collection
+            self._chroma = get_collection(str(self._path / "palace"), create=True)
         return self._chroma
 
     def _get_kg(self):
