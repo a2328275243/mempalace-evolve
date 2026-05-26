@@ -312,7 +312,7 @@ def check_admission(collection, wing: str,
         try:
             from mcp_tools_read import _get_taxonomy_cached
             from mempalace_evolve.core.chroma_helper import get_collection
-            from config import GLOBAL_CHROMA
+            from mempalace_evolve.core.config import GLOBAL_CHROMA
             col = get_collection(str(GLOBAL_CHROMA))
             taxonomy = _get_taxonomy_cached(col)
             wing_count = sum(taxonomy.get(wing, {}).values())
@@ -401,8 +401,8 @@ if __name__ == "__main__":
     parser.add_argument("--no-dry-run", action="store_true")
     args = parser.parse_args()
 
-    from chroma_helper import get_collection
-    from config import GLOBAL_CHROMA
+    from mempalace_evolve.core.chroma_helper import get_collection
+    from mempalace_evolve.core.config import GLOBAL_CHROMA
     col = get_collection(str(GLOBAL_CHROMA))
 
     if args.command == "migrate":

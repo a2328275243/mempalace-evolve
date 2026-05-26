@@ -199,7 +199,7 @@ class Layer1:
         """全量获取所有 drawers（仅在前面阶段数量不足时使用）。"""
         drawers = []
         try:
-            from chroma_helper import get_all_metadata
+            from mempalace_evolve.core.chroma_helper import get_all_metadata
             all_items = get_all_metadata(col)
             for item in all_items:
                 meta = item.get("metadata", {})
@@ -374,7 +374,7 @@ class Layer3:
         # 自适应评分
         if adaptive and output:
             try:
-            from mempalace_evolve.core.adaptive_scorer import get_wing_adjusted_confidence, adjust_scores, update_wing_baseline
+                from mempalace_evolve.core.adaptive_scorer import get_wing_adjusted_confidence, adjust_scores, update_wing_baseline
                 raw_distances = [r["distance"] for r in output]
                 # 更新 wing 历史基线
                 wing_name = wing or "global"
@@ -487,7 +487,7 @@ class Layer3:
 
         try:
             from bundle_scorer import BundleScorer
-            from knowledge_graph import KnowledgeGraph
+            from mempalace_evolve.core.knowledge_graph import KnowledgeGraph
             kg = KnowledgeGraph()
             scorer = BundleScorer(kg=kg, palace_path=self.palace_path)
             hit_ids = [h["id"] for h in hits]
@@ -550,6 +550,7 @@ class MemoryStack:
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
     import argparse
+    import sys
 
     parser = argparse.ArgumentParser(description="MemPalace 记忆栈")
     parser.add_argument("command", choices=["wake-up", "search", "recall", "status"])

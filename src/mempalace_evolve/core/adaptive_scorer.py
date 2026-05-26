@@ -153,7 +153,7 @@ def _save_baselines(baselines: dict):
     """保存历史距离基线（原子写入，同时更新内存缓存）"""
     global _baselines_cache, _baselines_mtime
     try:
-        from config import atomic_write_json
+        from mempalace_evolve.core.config import atomic_write_json
         atomic_write_json(_BASELINES_PATH, baselines, ensure_ascii=False, indent=2)
         _baselines_cache = baselines
         try:
