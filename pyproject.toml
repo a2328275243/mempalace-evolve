@@ -1,0 +1,49 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mempalace-evolve"
+version = "0.1.0"
+description = "Self-evolving memory palace for AI agents — persistent memory with automatic learning, scoring, and knowledge graph"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [{ name = "DreamSeed" }]
+keywords = ["ai", "memory", "agent", "knowledge-graph", "vector-search", "evolution"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+dependencies = [
+    "chromadb>=0.4.0",
+]
+
+[project.optional-dependencies]
+api = ["fastapi>=0.100.0", "uvicorn>=0.20.0"]
+langchain = ["langchain-core>=0.1.0"]
+mcp = []  # MCP adapter uses stdlib only
+all = ["mempalace-evolve[api,langchain]"]
+dev = ["pytest>=7.0", "pytest-asyncio", "httpx", "ruff"]
+
+[project.urls]
+Homepage = "https://github.com/DreamSeed/mempalace-evolve"
+Repository = "https://github.com/DreamSeed/mempalace-evolve"
+Issues = "https://github.com/DreamSeed/mempalace-evolve/issues"
+
+[project.scripts]
+mempalace = "mempalace_evolve.cli:main"
+mempalace-server = "mempalace_evolve.adapters.rest_api:serve"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mempalace_evolve"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
