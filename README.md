@@ -135,6 +135,66 @@ palace.remember("内容", room="decisions")
 palace.recall("搜索词")
 ```
 
+### 自制 Agent 接入（LangChain / AutoGPT / 自己写的都行）
+
+两种方式，选一个：
+
+**方式 A：直接调 SDK（最简单）**
+
+在你 Agent 的代码里，对话开始时 recall，对话结束时 remember：
+
+```python
+from mempalace_evolve import MemPalace
+
+palace = MemPalace("./agent-memory", wing="my_agent")
+
+# Agent 启动时，把相关记忆塞进 system prompt
+def build_prompt(user_query):
+    memories = palace.recall(user_query, limit=3)
+    memory_text = "\n".join(m["content"] for m in memories)
+    return f"你知道以下信息:\n{memory_text}\n\n用户问: {user_query}"
+
+# Agent 做了重要决策时，存起来
+def on_decision(decision_text):
+    palace.remember(decision_text, room="decisions")
+
+# Agent 遇到错误时，记录模式
+def on_error(error_text):
+    palace.remember(f"错误: {error_text}", room="errors")
+
+# 对话结束时，自动从对话中提取有价值的记忆
+def on_session_end(full_transcript):
+    palace.evolve(transcript=full_transcript)
+```
+
+**方式 B：继承 AgentAdapter（更规范）**
+
+```python
+from mempalace_evolve import MemPalace
+from mempalace_evolve.adapters.base import AgentAdapter
+
+class MyAgentMemory(AgentAdapter):
+    def on_session_start(self, context):
+        """对话开始 → 检索相关记忆，返回注入 prompt 的文本"""
+        query = context.get("user_query", "")
+        return self.on_user_input(query, context)
+
+    def on_session_end(self, transcript, context):
+        """对话结束 → 自动进化"""
+        self.palace.evolve(transcript=transcript)
+
+# 使用
+palace = MemPalace("./memory")
+memory = MyAgentMemory(palace)
+
+# 对话开始
+context_to_inject = memory.on_session_start({"user_query": "部署出错了"})
+# context_to_inject = "Relevant memories:\n- 上次部署错误是因为..."
+
+# 对话结束
+memory.on_session_end("完整对话记录...", {})
+```
+
 ## 30 秒上手
 
 ```python
