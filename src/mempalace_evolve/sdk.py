@@ -75,23 +75,27 @@ class MemPalace:
             The drawer ID of the stored memory.
         """
         from mempalace_evolve.core.chroma_helper import add_drawer, _make_drawer_id
+        import hashlib
 
         collection = self._get_collection()
         if collection is None:
             raise RuntimeError("Failed to initialize ChromaDB collection")
 
+        # 用内容 hash 保证每条记忆有唯一 ID
+        content_hash = hashlib.md5(content.encode()).hexdigest()[:8]
+        source_key = source or f"sdk_{content_hash}"
         chunk_index = 0
         add_drawer(
             collection,
             wing=self._wing,
             room=room,
             content=content,
-            source_file=source or "sdk",
+            source_file=source_key,
             chunk_index=chunk_index,
             added_by="sdk",
             extra_meta=metadata,
         )
-        drawer_id = _make_drawer_id(self._wing, room, source or "sdk", chunk_index)
+        drawer_id = _make_drawer_id(self._wing, room, source_key, chunk_index)
         logger.debug("Stored memory %s in %s/%s", drawer_id, self._wing, room)
         return drawer_id
 
