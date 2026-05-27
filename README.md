@@ -24,11 +24,48 @@
 
 # mempalace-evolve
 
+[![PyPI](https://img.shields.io/pypi/v/mempalace-evolve?color=blue)](https://pypi.org/project/mempalace-evolve/)
+[![Python](https://img.shields.io/pypi/pyversions/mempalace-evolve)](https://pypi.org/project/mempalace-evolve/)
+[![License](https://img.shields.io/pypi/l/mempalace-evolve)](https://github.com/a2328275243/mempalace-evolve/blob/master/LICENSE)
+[![Tests](https://img.shields.io/badge/tests-40%20passing-brightgreen)]()
+
 给 AI Agent 用的自进化记忆系统。
 
 Agent 跑完一轮对话就什么都忘了？这个项目解决的就是这个问题。它给你的 Agent 加上持久记忆——不只是存起来，还会自己筛选、打分、淘汰，越用越聪明。
 
 不绑定任何特定框架。OpenAI、Claude、LangChain、自己写的 Agent，都能接。
+
+## 30 秒体验
+
+```bash
+pip install mempalace-evolve
+mempalace demo
+```
+
+看到彩色输出就说明一切正常。不需要写任何代码。
+
+```
+  ═══════════════════════════════════════════════════════
+  ║ MemPalace Evolve — Self-Evolving Memory for AI Agents ║
+  ═══════════════════════════════════════════════════════
+
+  [1] 存储记忆 (Store Memories)
+      ✓ [decisions] Decided to use FastAPI with PostgreSQL...
+      ✓ [errors] CORS blocked requests — fixed by adding middleware...
+
+  [2] 语义搜索 (Semantic Search)
+      Q: cross-origin request handling
+      → CORS blocked requests from localhost:3000...  [0.519]
+
+  [3] 知识图谱 (Knowledge Graph)
+      API ─built_with→ FastAPI
+      API ─stores_data_in→ PostgreSQL
+
+  [4] 进化管道 (Evolution Pipeline)
+      候选提取: 4 条 → 晋升存储: 1 条
+
+  ✓ Demo 完成！
+```
 
 ## 核心能力
 
@@ -284,7 +321,11 @@ MemoryReviewer 评审
 src/mempalace_evolve/
 ├── __init__.py          # from mempalace_evolve import MemPalace
 ├── sdk.py               # 主 SDK，所有操作的入口
-├── cli.py               # 命令行工具
+├── cli.py               # 命令行工具 (demo/doctor/playground/remember/recall/serve/evolve)
+├── demo.py              # 一键演示
+├── doctor.py            # 安装诊断
+├── playground.py        # 交互式 REPL
+├── terminal.py          # 终端颜色输出
 ├── core/                # 核心引擎（不依赖任何 Agent 框架）
 │   ├── config.py        # 配置管理、路径解析
 │   ├── knowledge_graph.py  # SQLite 知识图谱
@@ -301,12 +342,22 @@ src/mempalace_evolve/
     ├── base.py          # 抽象基类（继承这个来接入你的 Agent）
     ├── openai_adapter.py   # OpenAI function calling
     ├── langchain_adapter.py # LangChain StructuredTool
+    ├── mcp_server.py       # MCP Server (Claude Code/Cursor)
     └── rest_api.py         # FastAPI REST 服务
 ```
 
 ## CLI 命令
 
 ```bash
+# 一键体验完整功能
+mempalace demo
+
+# 检查安装是否正常
+mempalace doctor
+
+# 交互式探索（输入即存储，/search 搜索）
+mempalace playground
+
 # 存一条记忆
 mempalace remember "Redis 用作缓存层" --room config
 

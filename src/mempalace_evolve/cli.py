@@ -7,10 +7,13 @@ import sys
 
 
 def main():
+    from mempalace_evolve import __version__
+
     parser = argparse.ArgumentParser(
         prog="mempalace",
         description="Self-evolving memory palace for AI agents",
     )
+    parser.add_argument("--version", action="version", version=f"mempalace {__version__}")
     sub = parser.add_subparsers(dest="command")
 
     # mempalace remember "content" --room decisions
@@ -35,14 +38,46 @@ def main():
     p_evo = sub.add_parser("evolve", help="Run evolution cycle")
     p_evo.add_argument("--palace", default=None, help="Palace path")
 
+    # mempalace demo
+    p_demo = sub.add_parser("demo", help="Run a self-contained demo showcase")
+    p_demo.add_argument("--keep", action="store_true", help="Keep demo data after run")
+
+    # mempalace doctor
+    sub.add_parser("doctor", help="Verify installation and dependencies")
+
+    # mempalace playground
+    p_pg = sub.add_parser("playground", help="Interactive memory playground")
+    p_pg.add_argument("--palace", default=None, help="Palace path")
+
     args = parser.parse_args()
 
     if args.command is None:
         parser.print_help()
         return
 
-    from mempalace_evolve.sdk import MemPalace
-    palace = MemPalace(args.palace)
+    # Commands that don't need a palace instance
+    if args.command == "demo":
+        from mempalace_evolve.demo import run_demo
+        run_demo(keep_data=args.keep)
+        return
+    if args.command == "doctor":
+        from mempalace_evolve.doctor import run_doctor
+        ok = run_doctor()
+        sys.exit(0 if ok else 1)
+    if args.command == "playground":
+        from mempalace_evolve.playground import run_playground
+        run_playground(palace_path=args.palace)
+        return
+
+    # Commands that need a palace instance
+    try:
+        from mempalace_evolve.sdk import MemPalace
+        palace = MemPalace(args.palace)
+    except Exception as e:
+        from mempalace_evolve.terminal import red, dim
+        print(red(f"\n  Error: {e}"))
+        print(dim("  Run 'mempalace doctor' to diagnose.\n"))
+        sys.exit(1)
 
     if args.command == "remember":
         did = palace.remember(args.content, room=args.room)
