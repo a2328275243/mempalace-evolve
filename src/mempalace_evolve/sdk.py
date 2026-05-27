@@ -169,6 +169,61 @@ class MemPalace:
         except Exception:
             return False
 
+    def digest(self, conversation: str | list[dict]) -> dict:
+        """Auto-extract and store knowledge from a conversation.
+
+        Args:
+            conversation: Either a transcript string, or a list of
+                message dicts [{"role": "user", "content": "..."}].
+
+        Returns:
+            Dict with extracted count and stored items.
+        """
+        from mempalace_evolve.evolution.candidate import CandidateExtractor
+
+        if isinstance(conversation, list):
+            transcript = "\n".join(
+                f"{m.get('role', 'user')}: {m.get('content', '')}"
+                for m in conversation
+            )
+        else:
+            transcript = conversation
+
+        extractor = CandidateExtractor()
+        candidates = extractor.extract(transcript)
+
+        stored = []
+        for c in candidates:
+            room = c.get("type", "general")
+            drawer_id = self.remember(
+                c["content"], room=room,
+                metadata={"score": c["score"], "source": "digest"},
+            )
+            stored.append({"id": drawer_id, "type": room, "score": c["score"]})
+
+        return {"extracted": len(candidates), "stored": stored}
+
+    def context_for(self, query: str, *, limit: int = 5) -> str:
+        """Get relevant context for a new query (for prompt injection).
+
+        Args:
+            query: The user's new question/message.
+            limit: Max memories to include.
+
+        Returns:
+            Formatted string ready to inject into system prompt.
+        """
+        results = self.recall(query, limit=limit)
+        if not results:
+            return ""
+        lines = []
+        for r in results:
+            meta = r.get("metadata", {})
+            room = meta.get("room", "")
+            prefix = f"[{room}] " if room else ""
+            lines.append(f"- {prefix}{r['content'][:500]}")
+        return "\n".join(lines)
+
     # ------------------------------------------------------------------
     # Knowledge Graph
     # ------------------------------------------------------------------
