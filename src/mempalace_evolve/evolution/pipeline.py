@@ -33,7 +33,7 @@ class EvolutionPipeline:
         Returns:
             Report dict with stats from each step.
         """
-        report = {"steps": [], "promoted": 0, "dropped": 0, "errors": []}
+        report = {"steps": [], "promoted": 0, "dropped": 0, "candidates": 0, "errors": []}
 
         # Step 1: Extract candidates
         candidates = []
@@ -41,6 +41,7 @@ class EvolutionPipeline:
             from mempalace_evolve.evolution.candidate import CandidateExtractor
             extractor = CandidateExtractor()
             candidates = extractor.extract(transcript)
+            report["candidates"] = len(candidates)
             report["steps"].append({
                 "step": "extract",
                 "candidates_found": len(candidates),
