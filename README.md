@@ -26,7 +26,7 @@
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Tests: 40 passing](https://img.shields.io/badge/tests-40%20passing-brightgreen)]()
+[![Tests](https://github.com/a2328275243/mempalace-evolve/actions/workflows/tests.yml/badge.svg)](https://github.com/a2328275243/mempalace-evolve/actions/workflows/tests.yml)
 
 **给 AI Agent 用的自进化记忆系统。**
 
