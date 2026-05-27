@@ -59,6 +59,7 @@ def _run(palace_path: str) -> None:
             print(f"      {green('→')} {content}  {score_color(f'[{dist:.3f}]')}")
         else:
             print(f"      {cyan('Q:')} {query}  {dim('(no match)')}")
+    print(dim("      → 每次 recall 自动更新 last_accessed（反馈回路）"))
 
     # --- Step 3: Knowledge graph ---
     print(step(3, "知识图谱 (Knowledge Graph)"))
@@ -93,6 +94,10 @@ def _run(palace_path: str) -> None:
     print(f"      候选提取: {cyan(str(candidates))} 条")
     print(f"      晋升存储: {green(str(promoted))} 条")
     print(f"      丢弃低分: {dim(str(dropped))} 条")
+    merged = report.get("merged", 0)
+    if merged:
+        print(f"      合并重复: {yellow(str(merged))} 条")
+    print(dim("      → evolve 自动执行: 提取 + 评审 + 合并 + 遗忘检测"))
 
     # --- Step 5: Summary ---
     print(step(5, "总结 (Summary)"))

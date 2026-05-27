@@ -142,9 +142,20 @@ class MemPalace:
             docs = results["documents"][0]
             metas = results["metadatas"][0] if results.get("metadatas") else [{}] * len(docs)
             dists = results["distances"][0] if results.get("distances") else [0.0] * len(docs)
+            ids = results["ids"][0] if results.get("ids") else []
             for doc, meta, dist in zip(docs, metas, dists):
                 if dist <= threshold:
                     output.append({"content": doc, "metadata": meta, "distance": dist})
+
+            # Feedback loop: touch recalled memories to update last_accessed
+            if output and ids:
+                recalled_ids = ids[:len(output)]
+                try:
+                    from mempalace_evolve.core.lifecycle import touch_drawers
+                    touch_drawers(collection, recalled_ids)
+                except Exception:
+                    pass  # non-critical, don't break recall
+
         return output
 
     def forget(self, drawer_id: str) -> bool:
@@ -179,6 +190,8 @@ class MemPalace:
     def evolve(self, transcript: str | None = None) -> dict:
         """Run one evolution cycle.
 
+        Includes: candidate extraction → review → promote → consolidation → compress.
+
         Args:
             transcript: Optional session transcript to extract candidates from.
 
@@ -188,7 +201,37 @@ class MemPalace:
         from mempalace_evolve.evolution.pipeline import EvolutionPipeline
 
         pipeline = EvolutionPipeline(self)
-        return pipeline.run(transcript=transcript)
+        report = pipeline.run(transcript=transcript)
+
+        # Consolidation: merge similar memories
+        try:
+            collection = self._get_collection()
+            if collection and collection.count() > 1:
+                from mempalace_evolve.core.consolidation import (
+                    get_today_drawers, identify_duplicates, merge_similar_drawers,
+                )
+                today = get_today_drawers(collection, wing=self._wing)
+                if today:
+                    dupes = identify_duplicates(today)
+                    if dupes:
+                        merged = merge_similar_drawers(collection, dupes, dry_run=False)
+                        report["merged"] = merged
+        except Exception as e:
+            logger.debug("Consolidation skipped: %s", e)
+
+        # Forgetting curve: compress old unused memories
+        try:
+            collection = self._get_collection()
+            if collection and collection.count() > 10:
+                from mempalace_evolve.core.lifecycle import find_compress_candidates
+                candidates = find_compress_candidates(collection, compress_after_days=60)
+                compress_count = sum(len(v) for v in candidates.values())
+                if compress_count > 0:
+                    report["compress_candidates"] = compress_count
+        except Exception as e:
+            logger.debug("Compress check skipped: %s", e)
+
+        return report
 
     # ------------------------------------------------------------------
     # Internals
