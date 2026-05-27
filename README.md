@@ -315,43 +315,48 @@ MemoryReviewer 评审:
 
 ---
 
-## 哪些是自动的？哪些需要手动？如何全自动？
+## 自动 / 手动 / 可配置自动
 
-### 自动 vs 手动一览
+### 完全自动（不需要你做任何事）
 
-| 功能 | 是否自动 | 说明 |
-|------|----------|------|
-| `recall()` 反馈回路 | ✅ 完全自动 | 每次搜索自动更新记忆活跃度，无需任何配置 |
-| 合并去重 | ✅ 自动（evolve 时） | evolve 执行时自动检测并合并相似记忆 |
-| 低分清理 | ✅ 自动（evolve 时） | evolve 执行时自动清理低分过期记忆 |
-| 候选晋升 | ✅ 自动（evolve 时） | evolve 执行时自动晋升高质量候选 |
-| 孤立实体清理 | ✅ 自动（evolve 时） | evolve 执行时自动清理 KG 孤立节点 |
-| 过时决策标记 | ✅ 自动（evolve 时） | evolve 执行时自动标记过时决策 |
-| **触发 evolve 本身** | ⚠️ 需要触发 | 见下方"如何实现全自动" |
-| **存储记忆** | ⚠️ 取决于模式 | MCP 模式下 AI 自动存；SDK 模式需代码调用 |
+- **反馈回路**：每次 `recall()` 搜索时，被命中的记忆自动刷新活跃度。常用的不会被清理，不用的逐渐淘汰。
+- **合并去重**：evolve 执行时自动检测相似记忆并合并。
+- **低分清理**：评分 < 0.3 且 90 天没被访问的记忆自动删除。
+- **候选晋升**：候选区中评分 >= 0.45 的记忆自动晋升为正式记忆。
+- **孤立实体清理**：知识图谱中没有任何关系的孤立节点自动删除。
+- **过时决策标记**：decisions room 中 180 天没更新的自动标记为 stale。
 
-**关键点：** 所有进化机制都是自动的，但需要有人/有代码**触发 `evolve()`**。就像洗衣机会自动洗衣服，但你得按下启动按钮。
+以上全部在 `evolve()` 被调用时自动执行，不需要额外配置。
 
-### 如何实现全自动（不同模式）
+### 需要触发的（一次调用，全部执行）
 
-#### MCP 模式（Claude Code / Cursor）
+`evolve()` 本身需要被触发。触发一次 = 上面 6 项全部执行。
 
-**方法 1：在 CLAUDE.md 或 system prompt 中加一句话（推荐）**
+### 存储记忆
 
-在项目的 `CLAUDE.md` 或 AI 的 system prompt 中添加：
+| 模式 | 谁来存 |
+|------|--------|
+| MCP（Claude Code / Cursor） | AI 自己判断什么值得存，自动调用 remember 工具 |
+| SDK（自建应用） | 你的代码调 `palace.remember()` 或 `palace.digest()` |
+| REST | 你的代码 POST /remember |
+
+### 如何让 evolve 也变成自动的
+
+**MCP 模式 — 方法 1：告诉 AI 去做**
+
+在项目 `CLAUDE.md` 或 system prompt 里加：
 
 ```
-每次对话结束前，请调用 evolve 工具执行记忆维护。
+对话结束前调用 evolve 工具。
 ```
 
-这样 AI 每次对话结束时会自动调用 evolve，触发全部进化机制。
+AI 看到这句话就会在每次对话结束时自动触发进化。
 
-**方法 2：配置 session hook（完全无感）**
+**MCP 模式 — 方法 2：配 hook（完全无感）**
 
-如果你的 AI 工具支持 hook（如 Claude Code），可以配置对话结束时自动触发：
+Claude Code 支持 hook，对话结束时自动执行命令：
 
 ```json
-// .claude/settings.json
 {
   "hooks": {
     "PostToolUse": [{
@@ -362,46 +367,36 @@ MemoryReviewer 评审:
 }
 ```
 
-这样完全不需要 AI 主动调用，session 结束自动进化。
+放在 `.claude/settings.json` 里，之后每次对话结束自动进化，AI 和用户都不需要操心。
 
-#### SDK 模式（自建 AI 应用）
-
-在你的对话循环结束时加一行代码：
+**SDK 模式 — 对话结束时调一行**
 
 ```python
-# 对话结束时自动进化
-def on_session_end(conversation_history):
-    palace.digest(conversation_history)  # 提取知识
-    palace.evolve()                      # 触发进化（清理+晋升+合并）
+def on_session_end(messages):
+    palace.digest(messages)  # 提取知识
+    palace.evolve()          # 进化
 ```
 
-或者用定时任务：
+**SDK 模式 — 定时任务**
 
 ```python
 import schedule
-
-# 每小时自动进化一次
 schedule.every(1).hours.do(lambda: palace.evolve())
 ```
 
-#### REST API 模式
-
-用 cron 定时调用：
+**REST 模式 — cron**
 
 ```bash
-# 每天凌晨 2 点自动进化
 0 2 * * * curl -X POST http://localhost:8765/evolve
 ```
 
-### 总结
+### 各模式总览
 
-| 模式 | 存储记忆 | 触发进化 | 进化过程 |
-|------|----------|----------|----------|
-| MCP | AI 自动存 | AI 调用 evolve 工具 / hook 自动触发 | 全自动 |
-| SDK | 代码调 `remember()` 或 `digest()` | 代码调 `evolve()` | 全自动 |
-| REST | POST /remember | POST /evolve 或 cron | 全自动 |
-
-**一句话：你只需要负责"什么时候触发 evolve"，剩下的全部自动完成。**
+| 模式 | 存记忆 | 搜记忆 | 进化 | 全自动方案 |
+|------|--------|--------|------|-----------|
+| MCP | AI 自动 | AI 自动 | AI 调工具 | 加一句 prompt 或配 hook |
+| SDK | `remember()` / `digest()` | `recall()` / `context_for()` | `evolve()` | 放在 session end 回调里 |
+| REST | POST /remember | POST /recall | POST /evolve | cron 定时 |
 
 ---
 
