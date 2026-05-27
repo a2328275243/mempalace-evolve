@@ -135,7 +135,26 @@ palace.remember("内容", room="decisions")
 palace.recall("搜索词")
 ```
 
-### 自制 Agent 接入（LangChain / AutoGPT / 自己写的都行）
+### LangChain
+
+```python
+from mempalace_evolve import MemPalace
+from mempalace_evolve.adapters.langchain_adapter import LangChainAdapter
+from langchain_openai import ChatOpenAI
+from langchain.agents import initialize_agent
+
+palace = MemPalace("./memory")
+adapter = LangChainAdapter(palace)
+
+# 获取 LangChain 兼容的 StructuredTool
+tools = adapter.get_tools()
+
+# 直接接入 agent
+llm = ChatOpenAI(model="gpt-4")
+agent = initialize_agent(tools, llm, agent="zero-shot-react-description")
+```
+
+### 自制 Agent 接入（AutoGPT / 自己写的都行）
 
 两种方式，选一个：
 
@@ -281,6 +300,7 @@ src/mempalace_evolve/
 └── adapters/            # Agent 适配器
     ├── base.py          # 抽象基类（继承这个来接入你的 Agent）
     ├── openai_adapter.py   # OpenAI function calling
+    ├── langchain_adapter.py # LangChain StructuredTool
     └── rest_api.py         # FastAPI REST 服务
 ```
 
