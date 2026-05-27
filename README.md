@@ -315,6 +315,96 @@ MemoryReviewer 评审:
 
 ---
 
+## 哪些是自动的？哪些需要手动？如何全自动？
+
+### 自动 vs 手动一览
+
+| 功能 | 是否自动 | 说明 |
+|------|----------|------|
+| `recall()` 反馈回路 | ✅ 完全自动 | 每次搜索自动更新记忆活跃度，无需任何配置 |
+| 合并去重 | ✅ 自动（evolve 时） | evolve 执行时自动检测并合并相似记忆 |
+| 低分清理 | ✅ 自动（evolve 时） | evolve 执行时自动清理低分过期记忆 |
+| 候选晋升 | ✅ 自动（evolve 时） | evolve 执行时自动晋升高质量候选 |
+| 孤立实体清理 | ✅ 自动（evolve 时） | evolve 执行时自动清理 KG 孤立节点 |
+| 过时决策标记 | ✅ 自动（evolve 时） | evolve 执行时自动标记过时决策 |
+| **触发 evolve 本身** | ⚠️ 需要触发 | 见下方"如何实现全自动" |
+| **存储记忆** | ⚠️ 取决于模式 | MCP 模式下 AI 自动存；SDK 模式需代码调用 |
+
+**关键点：** 所有进化机制都是自动的，但需要有人/有代码**触发 `evolve()`**。就像洗衣机会自动洗衣服，但你得按下启动按钮。
+
+### 如何实现全自动（不同模式）
+
+#### MCP 模式（Claude Code / Cursor）
+
+**方法 1：在 CLAUDE.md 或 system prompt 中加一句话（推荐）**
+
+在项目的 `CLAUDE.md` 或 AI 的 system prompt 中添加：
+
+```
+每次对话结束前，请调用 evolve 工具执行记忆维护。
+```
+
+这样 AI 每次对话结束时会自动调用 evolve，触发全部进化机制。
+
+**方法 2：配置 session hook（完全无感）**
+
+如果你的 AI 工具支持 hook（如 Claude Code），可以配置对话结束时自动触发：
+
+```json
+// .claude/settings.json
+{
+  "hooks": {
+    "PostToolUse": [{
+      "matcher": "stop",
+      "command": "python -c \"from mempalace_evolve import MemPalace; MemPalace('~/.mempalace').evolve()\""
+    }]
+  }
+}
+```
+
+这样完全不需要 AI 主动调用，session 结束自动进化。
+
+#### SDK 模式（自建 AI 应用）
+
+在你的对话循环结束时加一行代码：
+
+```python
+# 对话结束时自动进化
+def on_session_end(conversation_history):
+    palace.digest(conversation_history)  # 提取知识
+    palace.evolve()                      # 触发进化（清理+晋升+合并）
+```
+
+或者用定时任务：
+
+```python
+import schedule
+
+# 每小时自动进化一次
+schedule.every(1).hours.do(lambda: palace.evolve())
+```
+
+#### REST API 模式
+
+用 cron 定时调用：
+
+```bash
+# 每天凌晨 2 点自动进化
+0 2 * * * curl -X POST http://localhost:8765/evolve
+```
+
+### 总结
+
+| 模式 | 存储记忆 | 触发进化 | 进化过程 |
+|------|----------|----------|----------|
+| MCP | AI 自动存 | AI 调用 evolve 工具 / hook 自动触发 | 全自动 |
+| SDK | 代码调 `remember()` 或 `digest()` | 代码调 `evolve()` | 全自动 |
+| REST | POST /remember | POST /evolve 或 cron | 全自动 |
+
+**一句话：你只需要负责"什么时候触发 evolve"，剩下的全部自动完成。**
+
+---
+
 ## 其他适配器
 
 ### OpenAI Function Calling
