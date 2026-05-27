@@ -231,6 +231,19 @@ class MemPalace:
         except Exception as e:
             logger.debug("Compress check skipped: %s", e)
 
+        # Opportunistic evolve: 4 passive maintenance mechanisms
+        try:
+            collection = self._get_collection()
+            if collection:
+                from mempalace_evolve.evolution.opportunistic import (
+                    run_opportunistic_evolve,
+                )
+                opp = run_opportunistic_evolve(collection, dry_run=False)
+                if opp.get("success"):
+                    report["opportunistic"] = opp["results"]
+        except Exception as e:
+            logger.debug("Opportunistic evolve skipped: %s", e)
+
         return report
 
     # ------------------------------------------------------------------

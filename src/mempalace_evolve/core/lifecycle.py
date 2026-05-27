@@ -389,8 +389,96 @@ def migrate_legacy_drawers(collection) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# CLI
+# 6. TTL 过期删除
 # ---------------------------------------------------------------------------
+
+def find_ttl_expired(collection, ttl_days: int = 90, ttl_summary_days: int = 180,
+                     min_importance: float = 0.25,
+                     protected_rooms: list = None) -> list:
+    """找到满足 TTL 过期条件的 drawers。
+
+    条件：last_accessed 超过 ttl_days 且 importance < min_importance。
+    is_summary 的 drawers 使用 ttl_summary_days。
+    protected_rooms 中的 drawers 永不过期。
+    """
+    if protected_rooms is None:
+        protected_rooms = ["identity", "index", "config"]
+
+    now = datetime.now(timezone.utc)
+    expired = []
+    total = collection.count()
+    batch_size = 500
+    offset = 0
+
+    while offset < total:
+        try:
+            batch = collection.get(
+                include=["documents", "metadatas"],
+                limit=batch_size,
+                offset=offset,
+            )
+        except Exception:
+            break
+
+        for i, doc_id in enumerate(batch["ids"]):
+            meta = batch["metadatas"][i]
+            room = meta.get("room", "general")
+
+            if room in protected_rooms:
+                continue
+
+            access_str = meta.get("last_accessed") or meta.get("filed_at", "")
+            if not access_str:
+                continue
+
+            try:
+                accessed = datetime.fromisoformat(access_str)
+                if accessed.tzinfo is None:
+                    accessed = accessed.replace(tzinfo=timezone.utc)
+            except (ValueError, TypeError):
+                continue
+
+            is_summary = meta.get("is_summary", False)
+            applicable_ttl = ttl_summary_days if is_summary else ttl_days
+            days_since = (now - accessed).days
+
+            if days_since < applicable_ttl:
+                continue
+
+            importance = _safe_float(meta.get("enhanced_importance"),
+                                     _safe_float(meta.get("importance"), 0.5))
+            if importance >= min_importance:
+                continue
+
+            expired.append({
+                "id": doc_id,
+                "room": room,
+                "wing": meta.get("wing", "unknown"),
+                "days_since_access": days_since,
+                "importance": importance,
+                "is_summary": is_summary,
+                "content_preview": batch["documents"][i][:100],
+            })
+
+        if len(batch["ids"]) < batch_size:
+            break
+        offset += len(batch["ids"])
+
+    return expired
+
+
+def purge_expired(collection, expired_ids: list) -> dict:
+    """删除过期的 drawers。"""
+    if not expired_ids:
+        return {"purged": 0}
+
+    try:
+        collection.delete(ids=expired_ids)
+        return {"purged": len(expired_ids)}
+    except Exception:
+        logger.debug("purge_expired failed", exc_info=True)
+        return {"purged": 0, "error": "batch delete failed"}
+
 
 if __name__ == "__main__":
     import argparse
