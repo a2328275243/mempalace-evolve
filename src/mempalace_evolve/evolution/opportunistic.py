@@ -8,6 +8,8 @@ opportunistic_evolve.py — 被动进化模块
   4. 过时决策标记：decisions room 中超时的 → 标记 stale
 """
 
+from __future__ import annotations
+
 import logging
 from datetime import datetime, timedelta, timezone
 
@@ -17,14 +19,22 @@ logger = logging.getLogger("mempalace_evolve.evolve")
 
 
 def evolve_low_score_cleanup(collection, dry_run: bool = True,
-                             purge_days: int = 90, min_score: float = 0.30) -> dict:
-    """低分清理：评分 < min_score 且超过 purge_days 未访问 → 删除"""
+                             purge_days: int = 90, min_score: float = 0.30,
+                             protected_rooms: list[str] | None = None) -> dict:
+    """低分清理：评分 < min_score 且超过 purge_days 未访问 → 删除
+
+    protected_rooms 中的记忆不会被删除（如 decisions 设置了 never_delete）。
+    """
     expired = find_ttl_expired(
         collection,
         ttl_days=purge_days,
         ttl_summary_days=purge_days * 2,
         min_importance=min_score,
     )
+
+    # Filter out protected rooms
+    if protected_rooms:
+        expired = [e for e in expired if e.get("room") not in protected_rooms]
 
     if dry_run:
         return {"action": "low_score_cleanup", "dry_run": True, "candidates": len(expired)}
@@ -179,11 +189,13 @@ def evolve_stale_decisions(collection, dry_run: bool = True,
 def run_opportunistic_evolve(collection, dry_run: bool = True,
                              purge_days: int = 90, min_score: float = 0.30,
                              promote_score: float = 0.45,
-                             stale_days: int = 180) -> dict:
+                             stale_days: int = 180,
+                             protected_rooms: list[str] | None = None) -> dict:
     """执行完整的被动进化流程（四项维护）。"""
     results = {}
     results["low_score_cleanup"] = evolve_low_score_cleanup(
-        collection, dry_run=dry_run, purge_days=purge_days, min_score=min_score)
+        collection, dry_run=dry_run, purge_days=purge_days,
+        min_score=min_score, protected_rooms=protected_rooms)
     results["candidate_promotion"] = evolve_candidate_promotion(
         collection, dry_run=dry_run, promote_score=promote_score)
     results["orphan_cleanup"] = evolve_orphan_entities(dry_run=dry_run)

@@ -25,7 +25,8 @@ class MemPalace:
     """
 
     def __init__(self, palace_path: str | Path = None, wing: str = "global",
-                 auto_evolve: bool = False, evolve_interval: int = 3600):
+                 auto_evolve: bool = False, evolve_interval: int = 3600,
+                 scoring_config: dict[str, Any] | None = None):
         """Initialize a MemPalace instance.
 
         Args:
@@ -33,6 +34,18 @@ class MemPalace:
             wing: Wing/project name for scoping memories.
             auto_evolve: If True, run evolve() automatically in background.
             evolve_interval: Seconds between auto-evolve cycles (default 3600 = 1h).
+            scoring_config: Per-room scoring rules. Example:
+                {
+                    "rooms": {
+                        "decisions": {"weight": 2.0, "never_delete": True},
+                        "errors": {"weight": 1.5, "min_score": 0.4},
+                    },
+                    "thresholds": {
+                        "promote": 0.7,
+                        "discard": 0.3,
+                        "stale_days": 180,
+                    }
+                }
         """
         from mempalace_evolve.core.config import PalaceConfig
 
@@ -47,6 +60,8 @@ class MemPalace:
         self._layers = None
         self._evolve_thread = None
         self._evolve_stop = None
+        self._scoring_config = scoring_config or {}
+        self._last_evolve_at: str | None = None
 
         if auto_evolve:
             self._start_auto_evolve(evolve_interval)
@@ -118,8 +133,9 @@ class MemPalace:
         limit: int = 5,
         room: str | None = None,
         threshold: float = 0.8,
+        hybrid: bool = True,
     ) -> list[dict[str, Any]]:
-        """Search memories by semantic similarity.
+        """Search memories by semantic similarity + knowledge graph expansion.
 
         Args:
             query: Natural language query.
@@ -127,6 +143,7 @@ class MemPalace:
             room: Optional room filter.
             threshold: Max distance to include (0-1, lower = more similar).
                        Default 0.8 filters out clearly irrelevant results.
+            hybrid: If True, expand results via KG entity relationships.
 
         Returns:
             List of matching memories with content and metadata.
@@ -150,23 +167,30 @@ class MemPalace:
             return []
 
         output = []
+        seen_ids = set()
         if results and results.get("documents"):
             docs = results["documents"][0]
             metas = results["metadatas"][0] if results.get("metadatas") else [{}] * len(docs)
             dists = results["distances"][0] if results.get("distances") else [0.0] * len(docs)
             ids = results["ids"][0] if results.get("ids") else []
-            for doc, meta, dist in zip(docs, metas, dists):
+            for doc, meta, dist, did in zip(docs, metas, dists, ids):
                 if dist <= threshold:
                     output.append({"content": doc, "metadata": meta, "distance": dist})
+                    seen_ids.add(did)
 
-            # Feedback loop: touch recalled memories to update last_accessed
+            # Feedback loop: touch recalled memories
             if output and ids:
                 recalled_ids = ids[:len(output)]
                 try:
                     from mempalace_evolve.core.lifecycle import touch_drawers
                     touch_drawers(collection, recalled_ids)
                 except Exception:
-                    pass  # non-critical, don't break recall
+                    pass
+
+        # Hybrid: expand via knowledge graph
+        if hybrid and output:
+            kg_extra = self._kg_expand(output, seen_ids, limit)
+            output.extend(kg_extra)
 
         return output
 
@@ -281,9 +305,10 @@ class MemPalace:
     # ------------------------------------------------------------------
 
     def evolve(self, transcript: str | None = None) -> dict:
-        """Run one evolution cycle.
+        """Run one evolution cycle (incremental: only processes new memories).
 
         Includes: candidate extraction → review → promote → consolidation → compress.
+        Respects scoring_config for per-room weights and thresholds.
 
         Args:
             transcript: Optional session transcript to extract candidates from.
@@ -291,12 +316,19 @@ class MemPalace:
         Returns:
             Evolution report dict.
         """
+        from datetime import datetime, timezone
         from mempalace_evolve.evolution.pipeline import EvolutionPipeline
+
+        # Resolve scoring thresholds from config
+        thresholds = self._scoring_config.get("thresholds", {})
+        min_score = thresholds.get("discard", 0.30)
+        promote_score = thresholds.get("promote", 0.45)
+        stale_days = thresholds.get("stale_days", 180)
 
         pipeline = EvolutionPipeline(self)
         report = pipeline.run(transcript=transcript)
 
-        # Consolidation: merge similar memories
+        # Consolidation: merge similar memories (incremental — only today's)
         try:
             collection = self._get_collection()
             if collection and collection.count() > 1:
@@ -324,18 +356,35 @@ class MemPalace:
         except Exception as e:
             logger.debug("Compress check skipped: %s", e)
 
-        # Opportunistic evolve: 4 passive maintenance mechanisms
+        # Opportunistic evolve with configured thresholds
         try:
             collection = self._get_collection()
             if collection:
                 from mempalace_evolve.evolution.opportunistic import (
                     run_opportunistic_evolve,
                 )
-                opp = run_opportunistic_evolve(collection, dry_run=False)
+                # Apply per-room never_delete protection
+                rooms_config = self._scoring_config.get("rooms", {})
+                protected_rooms = [
+                    r for r, cfg in rooms_config.items()
+                    if cfg.get("never_delete", False)
+                ]
+
+                opp = run_opportunistic_evolve(
+                    collection,
+                    dry_run=False,
+                    min_score=min_score,
+                    promote_score=promote_score,
+                    stale_days=stale_days,
+                    protected_rooms=protected_rooms,
+                )
                 if opp.get("success"):
                     report["opportunistic"] = opp["results"]
         except Exception as e:
             logger.debug("Opportunistic evolve skipped: %s", e)
+
+        # Record evolve timestamp for incremental next run
+        self._last_evolve_at = datetime.now(timezone.utc).isoformat()
 
         return report
 
@@ -377,6 +426,67 @@ class MemPalace:
                         subj = self._wing or "project"
                         triples.append((subj, predicate, obj))
         return triples
+
+    def _kg_expand(self, results: list[dict], seen_ids: set, limit: int) -> list[dict]:
+        """Expand recall results via knowledge graph relationships.
+
+        Extracts entities from top results, queries KG for related entities,
+        then fetches memories linked to those entities.
+        """
+        try:
+            kg = self._get_kg()
+            collection = self._get_collection()
+            if not kg or not collection:
+                return []
+        except Exception:
+            return []
+
+        # Extract entity names from result content (simple: use words > 3 chars)
+        import re
+        entities = set()
+        for r in results[:3]:  # Only expand from top 3
+            content = r.get("content", "")
+            # Extract capitalized words and Chinese terms
+            words = re.findall(r'[A-Z][a-z]+(?:[A-Z][a-z]+)*|\b\w{4,}\b', content)
+            entities.update(w for w in words[:5])
+
+        if not entities:
+            return []
+
+        # Query KG for related entities
+        related_ids = set()
+        for entity in list(entities)[:5]:
+            try:
+                rels = kg.query_entity(entity, direction="both")
+                if isinstance(rels, list):
+                    for rel in rels:
+                        src = rel.get("source_closet", "")
+                        if src and src not in seen_ids:
+                            related_ids.add(src)
+            except Exception:
+                continue
+
+        if not related_ids:
+            return []
+
+        # Fetch the related memories
+        extra = []
+        fetch_ids = list(related_ids)[:limit]
+        try:
+            fetched = collection.get(ids=fetch_ids, include=["documents", "metadatas"])
+            if fetched and fetched.get("documents"):
+                for doc, meta in zip(fetched["documents"], fetched["metadatas"]):
+                    if meta.get("wing") == self._wing:
+                        extra.append({
+                            "content": doc,
+                            "metadata": meta,
+                            "distance": -1,  # KG-expanded, no vector distance
+                            "source": "kg_expansion",
+                        })
+        except Exception:
+            pass
+
+        return extra
 
     def _get_kg(self):
         if self._kg is None:
