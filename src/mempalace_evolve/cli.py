@@ -32,6 +32,7 @@ def main():
     p_srv = sub.add_parser("serve", help="Start REST API server")
     p_srv.add_argument("--port", type=int, default=8765)
     p_srv.add_argument("--host", default="0.0.0.0")
+    p_srv.add_argument("--api-key", default=None, help="Require this API key in X-API-Key header")
     p_srv.add_argument("--palace", default=None, help="Palace path")
 
     # mempalace evolve
@@ -94,7 +95,8 @@ def main():
             print(f"  [{r.get('distance', '?'):.3f}] {r.get('content', '')[:100]}")
     elif args.command == "serve":
         from mempalace_evolve.adapters.rest_api import serve
-        serve(host=args.host, port=args.port, palace_path=args.palace)
+        serve(host=args.host, port=args.port, palace_path=args.palace,
+              api_key=args.api_key)
     elif args.command == "evolve":
         report = palace.evolve()
         print(f"Evolution: {report['promoted']} promoted, {report['dropped']} dropped")
