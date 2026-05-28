@@ -11,6 +11,8 @@ Usage:
 from __future__ import annotations
 
 import logging
+import math
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -144,6 +146,10 @@ class MemPalace:
         extra_meta["recall_count"] = extra_meta.get("recall_count", 0)
         extra_meta["cross_wing_hits"] = extra_meta.get("cross_wing_hits", 0)
 
+        # --- Contradiction detection: check if new memory conflicts with existing ---
+        if mtype == SEMANTIC and room in ("decisions", "config", "architecture"):
+            self._handle_contradiction(collection, content, room, extra_meta)
+
         # 用内容 hash 保证每条记忆有唯一 ID
         content_hash = hashlib.md5(content.encode()).hexdigest()[:8]
         source_key = source or f"sdk_{content_hash}"
@@ -210,7 +216,7 @@ class MemPalace:
 
         try:
             results = collection.query(
-                query_texts=[query], n_results=limit, where=where_wing,
+                query_texts=[query], n_results=limit * 2, where=where_wing,
             )
             if results and results.get("documents"):
                 docs = results["documents"][0]
@@ -219,7 +225,11 @@ class MemPalace:
                 ids = results["ids"][0] if results.get("ids") else []
                 for doc, meta, dist, did in zip(docs, metas, dists, ids):
                     if dist <= threshold:
-                        output.append({"content": doc, "metadata": meta, "distance": dist})
+                        score = self._compute_recall_score(dist, meta)
+                        output.append({
+                            "content": doc, "metadata": meta,
+                            "distance": dist, "_score": score,
+                        })
                         seen_ids.add(did)
         except Exception as e:
             logger.warning("Wing recall failed: %s", e)
@@ -240,9 +250,11 @@ class MemPalace:
                         # Track cross-wing hit for smart promotion
                         if meta.get("wing") != self._wing:
                             self._track_cross_wing_hit(collection, did, meta)
+                        score = self._compute_recall_score(dist, meta)
                         output.append({
                             "content": doc, "metadata": meta,
-                            "distance": dist, "source": "procedural_global",
+                            "distance": dist, "_score": score,
+                            "source": "procedural_global",
                         })
                         seen_ids.add(did)
         except Exception:
@@ -262,11 +274,14 @@ class MemPalace:
             kg_extra = self._kg_expand(output, seen_ids, limit)
             output.extend(kg_extra)
 
+        # --- Sort by composite score (recency + relevance + importance) ---
+        output.sort(key=lambda x: x.get("_score", 0), reverse=True)
+
         # --- Update working memory cache ---
         self._working_memory = output
         self._working_memory_topic = query
 
-        return output[:limit * 2]  # Allow extra from procedural + KG
+        return output[:limit]  # Return top-scored results up to limit
 
     def _track_cross_wing_hit(self, collection, drawer_id: str, meta: dict):
         """Track when a memory is recalled from a different wing.
@@ -280,6 +295,92 @@ class MemPalace:
             collection.update(ids=[drawer_id], metadatas=[meta])
         except Exception:
             pass
+
+    def _compute_recall_score(self, distance: float, meta: dict) -> float:
+        """Compute composite recall score: relevance + recency - stale penalty.
+
+        Formula inspired by Stanford Generative Agents:
+            score = relevance * 0.5 + recency * 0.3 + importance * 0.2
+
+        - relevance: 1 - distance (vector similarity)
+        - recency: exponential decay based on days since last access
+        - importance: from metadata (enhanced_importance or default 0.5)
+        - stale penalty: -0.3 if marked stale
+        """
+        # Relevance: invert distance (0 = perfect match → 1.0)
+        relevance = max(0.0, 1.0 - distance)
+
+        # Recency: exponential decay, half-life = 30 days
+        recency = 0.5  # default if no timestamp
+        last_accessed = meta.get("last_accessed") or meta.get("added_at", "")
+        if last_accessed:
+            try:
+                if "T" in str(last_accessed):
+                    ts = datetime.fromisoformat(str(last_accessed).replace("Z", "+00:00"))
+                else:
+                    ts = datetime.fromisoformat(str(last_accessed))
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+                days_ago = (datetime.now(timezone.utc) - ts).total_seconds() / 86400
+                recency = math.exp(-0.023 * days_ago)  # half-life ≈ 30 days
+            except (ValueError, TypeError):
+                pass
+
+        # Importance
+        importance = 0.5
+        try:
+            importance = float(meta.get("enhanced_importance",
+                              meta.get("importance", 0.5)))
+        except (ValueError, TypeError):
+            pass
+
+        # Composite score
+        score = relevance * 0.5 + recency * 0.3 + importance * 0.2
+
+        # Stale penalty: deprioritize outdated memories
+        if meta.get("stale") or meta.get("status") == "stale":
+            score -= 0.3
+
+        # Superseded penalty: memory has been replaced by newer info
+        if meta.get("status") == "superseded":
+            score -= 0.4
+
+        return round(score, 4)
+
+    def _handle_contradiction(self, collection, new_content: str, room: str,
+                              new_meta: dict):
+        """Detect and handle contradictions with existing memories.
+
+        When a new semantic memory (decisions/config) is stored, check if
+        it contradicts an existing one in the same room. If so, mark the
+        old memory as superseded.
+
+        Uses lightweight heuristic: same room + high vector similarity +
+        different content = likely update/contradiction.
+        """
+        try:
+            where = {"$and": [{"wing": self._wing}, {"room": room}]}
+            existing = collection.query(
+                query_texts=[new_content], n_results=3, where=where,
+            )
+            if not existing or not existing.get("documents"):
+                return
+            docs = existing["documents"][0]
+            metas = existing["metadatas"][0]
+            dists = existing["distances"][0]
+            ids = existing["ids"][0]
+
+            for doc, meta, dist, did in zip(docs, metas, dists, ids):
+                # High similarity (< 0.3 distance) but not identical content
+                if dist < 0.3 and doc.strip() != new_content.strip():
+                    # Mark old memory as superseded
+                    meta["status"] = "superseded"
+                    meta["superseded_by"] = new_content[:100]
+                    meta["superseded_at"] = datetime.now(timezone.utc).isoformat()
+                    collection.update(ids=[did], metadatas=[meta])
+                    logger.debug("Marked memory %s as superseded", did[:20])
+        except Exception:
+            pass  # contradiction detection is best-effort
 
     def forget(self, drawer_id: str) -> bool:
         """Delete a memory by ID."""
