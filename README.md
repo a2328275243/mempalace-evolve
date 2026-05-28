@@ -193,11 +193,11 @@ Mac / Linux：
   "mcpServers": {
     "mempalace-web": {
       "command": "mempalace-mcp",
-      "env": { "MEMPALACE_PATH": "~/.mempalace", "MEMPALACE_WING": "web_app" }
+      "env": { "MEMPALACE_PATH": "C:/Users/你的用户名/.mempalace", "MEMPALACE_WING": "web_app" }
     },
     "mempalace-ml": {
       "command": "mempalace-mcp",
-      "env": { "MEMPALACE_PATH": "~/.mempalace", "MEMPALACE_WING": "ml_project" }
+      "env": { "MEMPALACE_PATH": "C:/Users/你的用户名/.mempalace", "MEMPALACE_WING": "ml_project" }
     }
   }
 }
