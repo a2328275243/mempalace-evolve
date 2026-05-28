@@ -46,48 +46,74 @@ def evolve_low_score_cleanup(collection, dry_run: bool = True,
 
 def evolve_candidate_promotion(collection, dry_run: bool = True,
                                promote_score: float = 0.45) -> dict:
-    """candidate 晋升：candidate 翼中高质量记忆 → 移入项目 wing"""
+    """candidate 晋升 + 跨 wing 热门记忆自动升级为 procedural。
+
+    晋升条件（满足任一）：
+    1. candidate 翼中评分 >= promote_score → 移入项目 wing
+    2. 任何记忆被 3+ 个不同 wing recall 命中 → 升级为 procedural（全局共享）
+    """
+    promoted = 0
+    upgraded_to_procedural = 0
+
+    # --- Part 1: candidate → project wing ---
     try:
         candidates = collection.get(
             where={"wing": "candidate"},
             include=["documents", "metadatas"],
         )
     except Exception:
-        return {"action": "candidate_promotion", "promoted": 0}
+        candidates = None
 
-    if not candidates or not candidates["ids"]:
-        return {"action": "candidate_promotion", "promoted": 0}
+    if candidates and candidates.get("ids"):
+        to_promote = []
+        for i, doc_id in enumerate(candidates["ids"]):
+            meta = candidates["metadatas"][i]
+            importance = _safe_float(meta.get("enhanced_importance"),
+                                     _safe_float(meta.get("importance"), 0.3))
+            if importance >= promote_score:
+                to_promote.append((doc_id, candidates["documents"][i], meta, importance))
 
-    to_promote = []
-    for i, doc_id in enumerate(candidates["ids"]):
-        meta = candidates["metadatas"][i]
-        importance = _safe_float(meta.get("enhanced_importance"),
-                                 _safe_float(meta.get("importance"), 0.3))
-        if importance >= promote_score:
-            to_promote.append((doc_id, candidates["documents"][i], meta, importance))
+        if not dry_run:
+            for doc_id, doc, meta, _ in to_promote:
+                new_wing = meta.get("source_wing", meta.get("wing", "global"))
+                if new_wing == "candidate":
+                    new_wing = "global"
+                meta["wing"] = new_wing
+                meta["promoted_at"] = datetime.now(timezone.utc).isoformat()
+                try:
+                    collection.update(ids=[doc_id], documents=[doc], metadatas=[meta])
+                    promoted += 1
+                except Exception:
+                    logger.debug("promote failed for %s", doc_id, exc_info=True)
 
-    if dry_run:
-        return {
-            "action": "candidate_promotion",
-            "dry_run": True,
-            "candidates_total": len(candidates["ids"]),
-            "promotion_candidates": len(to_promote),
-        }
+    # --- Part 2: cross-wing hot memories → procedural ---
+    try:
+        all_items = collection.get(include=["metadatas"])
+        if all_items and all_items.get("ids"):
+            for i, doc_id in enumerate(all_items["ids"]):
+                meta = all_items["metadatas"][i]
+                cross_hits = int(meta.get("cross_wing_hits", 0))
+                current_type = meta.get("memory_type", "")
+                if cross_hits >= 3 and current_type != "procedural":
+                    if not dry_run:
+                        meta["memory_type"] = "procedural"
+                        meta["auto_promoted_reason"] = f"cross_wing_hits={cross_hits}"
+                        try:
+                            collection.update(ids=[doc_id], metadatas=[meta])
+                            upgraded_to_procedural += 1
+                        except Exception:
+                            pass
+                    else:
+                        upgraded_to_procedural += 1
+    except Exception:
+        pass
 
-    promoted = 0
-    for doc_id, doc, meta, _ in to_promote:
-        new_wing = meta.get("source_wing", meta.get("wing", "global"))
-        if new_wing == "candidate":
-            new_wing = "global"
-        meta["wing"] = new_wing
-        meta["promoted_at"] = datetime.now(timezone.utc).isoformat()
-        try:
-            collection.update(ids=[doc_id], documents=[doc], metadatas=[meta])
-            promoted += 1
-        except Exception:
-            logger.debug("promote failed for %s", doc_id, exc_info=True)
-
-    return {"action": "candidate_promotion", "promoted": promoted}
+    return {
+        "action": "candidate_promotion",
+        "promoted": promoted,
+        "upgraded_to_procedural": upgraded_to_procedural,
+        "dry_run": dry_run,
+    }
 
 
 def evolve_orphan_entities(dry_run: bool = True) -> dict:

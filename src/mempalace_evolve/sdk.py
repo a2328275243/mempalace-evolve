@@ -16,6 +16,25 @@ from typing import Any
 
 logger = logging.getLogger("mempalace_evolve")
 
+# Memory type constants
+SEMANTIC = "semantic"      # Facts, configs, decisions (project-scoped)
+EPISODIC = "episodic"      # Specific events, conversations (project-scoped)
+PROCEDURAL = "procedural"  # Experiences, patterns, lessons (globally shared)
+
+# Room → memory type mapping (auto-classification)
+_ROOM_TYPE_MAP = {
+    "decisions": SEMANTIC,
+    "config": SEMANTIC,
+    "architecture": SEMANTIC,
+    "project": SEMANTIC,
+    "preferences": SEMANTIC,
+    "errors": PROCEDURAL,       # Error patterns are transferable
+    "error_patterns": PROCEDURAL,
+    "daily_summaries": EPISODIC,
+    "progress": EPISODIC,
+    "general": EPISODIC,
+}
+
 
 class MemPalace:
     """Main entry point for the memory palace system.
@@ -62,6 +81,9 @@ class MemPalace:
         self._evolve_stop = None
         self._scoring_config = scoring_config or {}
         self._last_evolve_at: str | None = None
+        # Working memory: session-level cache to avoid repeated searches
+        self._working_memory: list[dict] = []
+        self._working_memory_topic: str = ""
 
         if auto_evolve:
             self._start_auto_evolve(evolve_interval)
@@ -83,6 +105,7 @@ class MemPalace:
         content: str,
         room: str = "general",
         *,
+        memory_type: str | None = None,
         metadata: dict[str, Any] | None = None,
         source: str = "",
     ) -> str:
@@ -91,6 +114,10 @@ class MemPalace:
         Args:
             content: The text content to remember.
             room: Room/category (e.g. "decisions", "errors", "config").
+            memory_type: "semantic", "episodic", or "procedural".
+                If None, auto-classified by room type.
+                - procedural memories are globally shared across all wings.
+                - semantic/episodic memories stay in the current wing.
             metadata: Optional metadata dict.
             source: Source identifier (file path, URL, etc).
 
@@ -104,9 +131,18 @@ class MemPalace:
         if not content or not content.strip():
             raise ValidationError("Memory content cannot be empty")
 
+        # Auto-classify memory type based on room
+        mtype = memory_type or _ROOM_TYPE_MAP.get(room, EPISODIC)
+
         collection = self._get_collection()
         if collection is None:
             raise StorageError("Failed to initialize ChromaDB collection")
+
+        # Merge memory_type into metadata
+        extra_meta = dict(metadata) if metadata else {}
+        extra_meta["memory_type"] = mtype
+        extra_meta["recall_count"] = extra_meta.get("recall_count", 0)
+        extra_meta["cross_wing_hits"] = extra_meta.get("cross_wing_hits", 0)
 
         # 用内容 hash 保证每条记忆有唯一 ID
         content_hash = hashlib.md5(content.encode()).hexdigest()[:8]
@@ -120,7 +156,7 @@ class MemPalace:
             source_file=source_key,
             chunk_index=chunk_index,
             added_by="sdk",
-            extra_meta=metadata,
+            extra_meta=extra_meta,
         )
         drawer_id = _make_drawer_id(self._wing, room, source_key, chunk_index)
         logger.debug("Stored memory %s in %s/%s", drawer_id, self._wing, room)
@@ -134,99 +170,116 @@ class MemPalace:
         room: str | None = None,
         threshold: float = 0.8,
         hybrid: bool = True,
-        cross_wing: bool | str = "auto",
     ) -> list[dict[str, Any]]:
-        """Search memories by semantic similarity + knowledge graph expansion.
+        """Search memories: current wing + global procedural (experiences).
+
+        Strategy:
+        1. Check working memory cache (same topic → skip search)
+        2. Search current wing (all memory types)
+        3. ALWAYS search global procedural memories (experiences/patterns)
+        4. Merge, deduplicate, track cross-wing hits for smart promotion
+        5. Optionally expand via knowledge graph
 
         Args:
             query: Natural language query.
             limit: Max results to return.
             room: Optional room filter.
-            threshold: Max distance to include (0-1, lower = more similar).
-            hybrid: If True, expand results via KG entity relationships.
-            cross_wing: Memory sharing mode:
-                - "auto" (default): search current wing first, fallback to all
-                  wings if no good results found. Zero config, fully automatic.
-                - True: always search ALL wings
-                - False: strictly only current wing (no cross-project)
+            threshold: Max distance (0-1, lower = more similar).
+            hybrid: If True, expand via KG relationships.
 
         Returns:
             List of matching memories with content and metadata.
         """
+        # Working memory cache: if same topic, return cached results
+        from difflib import SequenceMatcher
+        topic_sim = SequenceMatcher(None, query, self._working_memory_topic).ratio()
+        if topic_sim > 0.8 and self._working_memory:
+            return self._working_memory[:limit]
+
         collection = self._get_collection()
         if collection is None:
             return []
 
-        # Determine wing filter
-        search_all = cross_wing is True
-        auto_fallback = cross_wing == "auto"
+        output = []
+        seen_ids = set()
 
-        if search_all:
-            where = {"room": room} if room else None
-        else:
-            where = {"wing": self._wing}
-            if room:
-                where = {"$and": [{"wing": self._wing}, {"room": room}]}
+        # --- Search 1: Current wing (all types) ---
+        where_wing = {"wing": self._wing}
+        if room:
+            where_wing = {"$and": [{"wing": self._wing}, {"room": room}]}
 
         try:
             results = collection.query(
-                query_texts=[query],
-                n_results=limit,
-                where=where,
+                query_texts=[query], n_results=limit, where=where_wing,
             )
+            if results and results.get("documents"):
+                docs = results["documents"][0]
+                metas = results["metadatas"][0] if results.get("metadatas") else [{}] * len(docs)
+                dists = results["distances"][0] if results.get("distances") else [0.0] * len(docs)
+                ids = results["ids"][0] if results.get("ids") else []
+                for doc, meta, dist, did in zip(docs, metas, dists, ids):
+                    if dist <= threshold:
+                        output.append({"content": doc, "metadata": meta, "distance": dist})
+                        seen_ids.add(did)
         except Exception as e:
-            logger.warning("Recall failed: %s", e)
-            return []
+            logger.warning("Wing recall failed: %s", e)
 
-        output = []
-        seen_ids = set()
-        if results and results.get("documents"):
-            docs = results["documents"][0]
-            metas = results["metadatas"][0] if results.get("metadatas") else [{}] * len(docs)
-            dists = results["distances"][0] if results.get("distances") else [0.0] * len(docs)
-            ids = results["ids"][0] if results.get("ids") else []
-            for doc, meta, dist, did in zip(docs, metas, dists, ids):
-                if dist <= threshold:
-                    output.append({"content": doc, "metadata": meta, "distance": dist})
-                    seen_ids.add(did)
+        # --- Search 2: Global procedural memories (always, regardless of wing results) ---
+        try:
+            proc_where = {"memory_type": PROCEDURAL}
+            proc_results = collection.query(
+                query_texts=[query], n_results=limit, where=proc_where,
+            )
+            if proc_results and proc_results.get("documents"):
+                p_docs = proc_results["documents"][0]
+                p_metas = proc_results["metadatas"][0] if proc_results.get("metadatas") else [{}] * len(p_docs)
+                p_dists = proc_results["distances"][0] if proc_results.get("distances") else [0.0] * len(p_docs)
+                p_ids = proc_results["ids"][0] if proc_results.get("ids") else []
+                for doc, meta, dist, did in zip(p_docs, p_metas, p_dists, p_ids):
+                    if dist <= threshold and did not in seen_ids:
+                        # Track cross-wing hit for smart promotion
+                        if meta.get("wing") != self._wing:
+                            self._track_cross_wing_hit(collection, did, meta)
+                        output.append({
+                            "content": doc, "metadata": meta,
+                            "distance": dist, "source": "procedural_global",
+                        })
+                        seen_ids.add(did)
+        except Exception:
+            pass  # procedural search is best-effort
 
-            # Feedback loop: touch recalled memories
-            if output and ids:
-                recalled_ids = ids[:len(output)]
-                try:
-                    from mempalace_evolve.core.lifecycle import touch_drawers
-                    touch_drawers(collection, recalled_ids)
-                except Exception:
-                    pass
-
-        # Auto fallback: if current wing has no good results, search all wings
-        if auto_fallback and not output:
+        # --- Feedback loop: touch recalled memories ---
+        if output:
+            recalled_ids = list(seen_ids)[:limit]
             try:
-                fallback_where = {"room": room} if room else None
-                fallback_results = collection.query(
-                    query_texts=[query], n_results=limit, where=fallback_where,
-                )
-                if fallback_results and fallback_results.get("documents"):
-                    fb_docs = fallback_results["documents"][0]
-                    fb_metas = fallback_results["metadatas"][0] if fallback_results.get("metadatas") else [{}] * len(fb_docs)
-                    fb_dists = fallback_results["distances"][0] if fallback_results.get("distances") else [0.0] * len(fb_docs)
-                    fb_ids = fallback_results["ids"][0] if fallback_results.get("ids") else []
-                    for doc, meta, dist, did in zip(fb_docs, fb_metas, fb_dists, fb_ids):
-                        if dist <= threshold and did not in seen_ids:
-                            output.append({
-                                "content": doc, "metadata": meta,
-                                "distance": dist, "source": "cross_wing_fallback",
-                            })
-                            seen_ids.add(did)
+                from mempalace_evolve.core.lifecycle import touch_drawers
+                touch_drawers(collection, recalled_ids)
             except Exception:
                 pass
 
-        # Hybrid: expand via knowledge graph
+        # --- Hybrid: expand via knowledge graph ---
         if hybrid and output:
             kg_extra = self._kg_expand(output, seen_ids, limit)
             output.extend(kg_extra)
 
-        return output
+        # --- Update working memory cache ---
+        self._working_memory = output
+        self._working_memory_topic = query
+
+        return output[:limit * 2]  # Allow extra from procedural + KG
+
+    def _track_cross_wing_hit(self, collection, drawer_id: str, meta: dict):
+        """Track when a memory is recalled from a different wing.
+
+        If a memory gets hit by 3+ different wings, it's universally useful
+        and should be promoted to procedural type (handled by evolve).
+        """
+        try:
+            hits = int(meta.get("cross_wing_hits", 0)) + 1
+            meta["cross_wing_hits"] = hits
+            collection.update(ids=[drawer_id], metadatas=[meta])
+        except Exception:
+            pass
 
     def forget(self, drawer_id: str) -> bool:
         """Delete a memory by ID."""
