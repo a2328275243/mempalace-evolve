@@ -371,8 +371,8 @@ class MemPalace:
             ids = existing["ids"][0]
 
             for doc, meta, dist, did in zip(docs, metas, dists, ids):
-                # High similarity (< 0.3 distance) but not identical content
-                if dist < 0.3 and doc.strip() != new_content.strip():
+                # Same topic (< 0.5 distance) but not identical content
+                if dist < 0.5 and doc.strip() != new_content.strip():
                     # Mark old memory as superseded
                     meta["status"] = "superseded"
                     meta["superseded_by"] = new_content[:100]
