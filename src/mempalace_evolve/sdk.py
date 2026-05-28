@@ -134,7 +134,7 @@ class MemPalace:
         room: str | None = None,
         threshold: float = 0.8,
         hybrid: bool = True,
-        cross_wing: bool | str = False,
+        cross_wing: bool | str = "auto",
     ) -> list[dict[str, Any]]:
         """Search memories by semantic similarity + knowledge graph expansion.
 
@@ -145,10 +145,10 @@ class MemPalace:
             threshold: Max distance to include (0-1, lower = more similar).
             hybrid: If True, expand results via KG entity relationships.
             cross_wing: Memory sharing mode:
-                - False: only search current wing (default)
-                - True: search ALL wings
-                - "auto": search current wing first, fallback to all wings
-                  if no good results found (distance > 0.5)
+                - "auto" (default): search current wing first, fallback to all
+                  wings if no good results found. Zero config, fully automatic.
+                - True: always search ALL wings
+                - False: strictly only current wing (no cross-project)
 
         Returns:
             List of matching memories with content and metadata.
