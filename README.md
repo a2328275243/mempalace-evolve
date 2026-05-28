@@ -435,7 +435,12 @@ tools = adapter.get_tools()  # 返回 StructuredTool 列表，直接接入 agent
 # 启动 HTTP 服务
 python -m mempalace_evolve.cli serve --port 8765
 
-# 接口：POST /remember, /recall, /kg/add, /kg/query, /evolve
+# 带 API key 认证
+python -m mempalace_evolve.cli serve --port 8765 --api-key your-secret-key
+# 请求时需带 header: X-API-Key: your-secret-key
+
+# 接口：POST /remember, /recall, /digest, /evolve, /kg/add, /kg/query
+# GET /export, /health
 ```
 
 ---
@@ -449,6 +454,7 @@ python -m mempalace_evolve.cli serve --port 8765
 | `palace.forget(drawer_id)` | 删除指定记忆 |
 | `palace.digest(conversation)` | 从对话自动提取知识 |
 | `palace.context_for(query)` | 获取相关上下文（用于 prompt 注入） |
+| `palace.export(format, output)` | 导出记忆为 JSON 或 Markdown |
 | `palace.add_fact(s, p, o)` | 添加知识图谱三元组 |
 | `palace.query_entity(entity)` | 查询实体关系 |
 | `palace.evolve(transcript)` | 执行一次完整进化周期 |
@@ -463,8 +469,11 @@ python -m mempalace_evolve.cli doctor        # 检查安装环境
 python -m mempalace_evolve.cli playground    # 交互式 REPL
 python -m mempalace_evolve.cli remember "内容" --room decisions
 python -m mempalace_evolve.cli recall "搜索词"
-python -m mempalace_evolve.cli serve --port 8765
 python -m mempalace_evolve.cli evolve
+python -m mempalace_evolve.cli export --format json -o memories.json
+python -m mempalace_evolve.cli export --format markdown
+python -m mempalace_evolve.cli serve --port 8765
+python -m mempalace_evolve.cli serve --port 8765 --api-key mysecret
 ```
 
 ---
@@ -474,6 +483,8 @@ python -m mempalace_evolve.cli evolve
 ```
 src/mempalace_evolve/
 ├── sdk.py               # 主 SDK（MemPalace 类）
+├── exceptions.py        # 自定义异常（StorageError/ValidationError 等）
+├── export.py            # 记忆导出（JSON/Markdown）
 ├── cli.py               # 命令行工具
 ├── demo.py              # 一键演示
 ├── doctor.py            # 环境检查
@@ -496,7 +507,7 @@ src/mempalace_evolve/
     ├── mcp_server.py       # MCP 协议（Claude/Cursor）
     ├── openai_adapter.py   # OpenAI Function Calling
     ├── langchain_adapter.py # LangChain Tools
-    └── rest_api.py         # HTTP REST API
+    └── rest_api.py         # HTTP REST API（支持 API key 认证）
 ```
 
 ## License

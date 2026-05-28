@@ -49,6 +49,12 @@ def main():
     p_pg = sub.add_parser("playground", help="Interactive memory playground")
     p_pg.add_argument("--palace", default=None, help="Palace path")
 
+    # mempalace export --format json --output memories.json
+    p_exp = sub.add_parser("export", help="Export memories to JSON or Markdown")
+    p_exp.add_argument("--format", choices=["json", "markdown"], default="json")
+    p_exp.add_argument("--output", "-o", default=None, help="Output file path")
+    p_exp.add_argument("--palace", default=None, help="Palace path")
+
     args = parser.parse_args()
 
     if args.command is None:
@@ -92,6 +98,15 @@ def main():
     elif args.command == "evolve":
         report = palace.evolve()
         print(f"Evolution: {report['promoted']} promoted, {report['dropped']} dropped")
+    elif args.command == "export":
+        result = palace.export(format=args.format, output=args.output)
+        if args.output:
+            print(f"Exported to {args.output}")
+        elif args.format == "markdown":
+            print(result)
+        else:
+            import json
+            print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":

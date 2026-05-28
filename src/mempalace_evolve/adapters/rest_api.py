@@ -14,10 +14,18 @@ from pathlib import Path
 from typing import Any
 
 
-def create_app(palace_path: str | None = None, wing: str = "global"):
-    """Create a FastAPI app exposing MemPalace as REST endpoints."""
+def create_app(palace_path: str | None = None, wing: str = "global", api_key: str | None = None):
+    """Create a FastAPI app exposing MemPalace as REST endpoints.
+
+    Args:
+        palace_path: Path to palace directory.
+        wing: Wing/project name.
+        api_key: Optional API key. If set, all requests must include
+                 header "X-API-Key: <key>".
+    """
     try:
-        from fastapi import FastAPI, HTTPException
+        from fastapi import FastAPI, HTTPException, Request
+        from fastapi.responses import JSONResponse
         from pydantic import BaseModel
     except ImportError:
         raise ImportError(
@@ -32,6 +40,17 @@ def create_app(palace_path: str | None = None, wing: str = "global"):
         version="0.1.0",
         description="Self-evolving memory palace for AI agents",
     )
+
+    # API key middleware
+    if api_key:
+        @app.middleware("http")
+        async def check_api_key(request: Request, call_next):
+            if request.url.path == "/health":
+                return await call_next(request)
+            key = request.headers.get("X-API-Key", "")
+            if key != api_key:
+                return JSONResponse(status_code=401, content={"error": "Invalid API key"})
+            return await call_next(request)
 
     class RememberRequest(BaseModel):
         content: str
@@ -86,6 +105,20 @@ def create_app(palace_path: str | None = None, wing: str = "global"):
         report = palace.evolve(transcript=req.transcript)
         return report
 
+    class DigestRequest(BaseModel):
+        messages: list[dict] | None = None
+        transcript: str | None = None
+
+    @app.post("/digest")
+    def digest(req: DigestRequest):
+        conversation = req.messages or req.transcript or ""
+        result = palace.digest(conversation)
+        return result
+
+    @app.get("/export")
+    def export(format: str = "json"):
+        return palace.export(format=format)
+
     @app.get("/health")
     def health():
         return {"status": "ok", "palace_path": str(palace.path), "wing": palace.wing}
@@ -93,7 +126,8 @@ def create_app(palace_path: str | None = None, wing: str = "global"):
     return app
 
 
-def serve(host: str = "0.0.0.0", port: int = 8765, palace_path: str | None = None):
+def serve(host: str = "0.0.0.0", port: int = 8765, palace_path: str | None = None,
+          api_key: str | None = None):
     """Start the REST API server."""
     try:
         import uvicorn
@@ -102,5 +136,5 @@ def serve(host: str = "0.0.0.0", port: int = 8765, palace_path: str | None = Non
             "Server requires uvicorn. Install with: pip install mempalace-evolve[api]"
         )
 
-    app = create_app(palace_path)
+    app = create_app(palace_path, api_key=api_key)
     uvicorn.run(app, host=host, port=port)

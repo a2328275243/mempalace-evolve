@@ -75,11 +75,15 @@ class MemPalace:
             The drawer ID of the stored memory.
         """
         from mempalace_evolve.core.chroma_helper import add_drawer, _make_drawer_id
+        from mempalace_evolve.exceptions import StorageError, ValidationError
         import hashlib
+
+        if not content or not content.strip():
+            raise ValidationError("Memory content cannot be empty")
 
         collection = self._get_collection()
         if collection is None:
-            raise RuntimeError("Failed to initialize ChromaDB collection")
+            raise StorageError("Failed to initialize ChromaDB collection")
 
         # 用内容 hash 保证每条记忆有唯一 ID
         content_hash = hashlib.md5(content.encode()).hexdigest()[:8]
@@ -223,6 +227,23 @@ class MemPalace:
             prefix = f"[{room}] " if room else ""
             lines.append(f"- {prefix}{r['content'][:500]}")
         return "\n".join(lines)
+
+    def export(self, format: str = "json", output: str | None = None):
+        """Export all memories to JSON or Markdown.
+
+        Args:
+            format: "json" or "markdown".
+            output: Optional file path. If None, returns data directly.
+
+        Returns:
+            Dict (json) or str (markdown).
+        """
+        from mempalace_evolve.export import export_json, export_markdown
+
+        collection = self._get_collection()
+        if format == "markdown":
+            return export_markdown(collection, wing=self._wing, output=output)
+        return export_json(collection, wing=self._wing, output=output)
 
     # ------------------------------------------------------------------
     # Knowledge Graph
