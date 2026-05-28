@@ -562,16 +562,79 @@ palace.evolve()
 
 对于大型记忆库（1000+ 条），增量模式将进化耗时从秒级降低到毫秒级。
 
+### 跨项目记忆共享
+
+项目 A 的经验可以被项目 B 自动复用，不需要手动复制：
+
+```python
+palace_b = MemPalace("./memory", wing="project_b")
+
+# 方式 1：显式跨 wing 搜索（搜所有项目的记忆）
+results = palace_b.recall("Redis 缓存怎么配", cross_wing=True)
+
+# 方式 2：自动 fallback（当前项目没有相关记忆时，自动搜其他项目）
+results = palace_b.recall("Redis 缓存怎么配", cross_wing="auto")
+
+# 方式 3：只搜当前项目（默认行为）
+results = palace_b.recall("Redis 缓存怎么配", cross_wing=False)
+```
+
+跨 wing 返回的结果会标记来源 `source: "cross_wing_fallback"`，你可以据此决定是否采纳。
+
+### 上下文长度控制
+
+防止注入过多记忆撑爆 LLM 上下文窗口：
+
+```python
+# 最多注入 2000 字符（约 500 token）
+context = palace.context_for("项目架构", max_tokens=2000)
+
+# 小上下文模型（如 GPT-3.5）用更小的限制
+context = palace.context_for("项目架构", max_tokens=800)
+```
+
+### 记忆导入
+
+从 JSON 文件或其他系统批量导入记忆：
+
+```python
+# 从 JSON 文件导入
+result = palace.import_memories("exported_memories.json")
+# {"imported": 42, "skipped": 3, "errors": []}
+
+# 从列表导入
+palace.import_memories([
+    {"content": "API 用 FastAPI 框架", "room": "decisions"},
+    {"content": "数据库连接池 max=20", "room": "config"},
+])
+```
+
+JSON 文件格式：每条记忆需要 `content` 字段，可选 `room` 和 `metadata`。
+
+### 记忆库统计
+
+```python
+stats = palace.stats()
+# {
+#     "wing": "my_project",
+#     "total": 156,
+#     "rooms": {"decisions": 23, "errors": 45, "config": 12, ...},
+#     "kg_entities": 34
+# }
+```
+
 ---
 
 | 方法 | 说明 |
 |------|------|
 | `palace.remember(content, room)` | 存储一条记忆 |
-| `palace.recall(query, limit, room, hybrid)` | 语义搜索 + KG 扩展（hybrid 默认 True） |
+| `palace.recall(query, cross_wing=)` | 语义搜索，支持 `False`/`True`/`"auto"` 跨翼模式 |
 | `palace.forget(drawer_id)` | 删除指定记忆 |
 | `palace.digest(conversation)` | 从对话自动提取知识 + KG 三元组 |
-| `palace.context_for(query)` | 获取相关上下文（用于 prompt 注入） |
+| `palace.context_for(query, max_tokens=)` | 获取上下文，自动控制长度 |
+| `palace.import_memories(source)` | 从 JSON 文件或列表批量导入 |
 | `palace.export(format, output)` | 导出记忆为 JSON 或 Markdown |
+| `palace.stats()` | 查看记忆库统计（数量、分布、KG 实体数） |
 | `palace.add_fact(s, p, o)` | 添加知识图谱三元组 |
 | `palace.query_entity(entity)` | 查询实体关系 |
 | `palace.evolve(transcript)` | 执行一次增量进化周期 |
