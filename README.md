@@ -103,13 +103,14 @@ pip install "mempalace-evolve[mcp] @ git+https://github.com/a2328275243/mempalac
 
 **Claude Code** — 编辑 `~/.claude/settings.json`：
 
+Windows：
 ```json
 {
   "mcpServers": {
     "mempalace": {
       "command": "mempalace-mcp",
       "env": {
-        "MEMPALACE_PATH": "~/.mempalace",
+        "MEMPALACE_PATH": "C:/Users/你的用户名/.mempalace",
         "MEMPALACE_WING": "my_project"
       }
     }
@@ -117,19 +118,38 @@ pip install "mempalace-evolve[mcp] @ git+https://github.com/a2328275243/mempalac
 }
 ```
 
-**Cursor** — 在 Settings → MCP Servers 中添加：
+Mac / Linux：
+```json
+{
+  "mcpServers": {
+    "mempalace": {
+      "command": "mempalace-mcp",
+      "env": {
+        "MEMPALACE_PATH": "/Users/你的用户名/.mempalace",
+        "MEMPALACE_WING": "my_project"
+      }
+    }
+  }
+}
+```
+
+> ⚠️ 注意：`MEMPALACE_PATH` 必须用绝对路径，`~` 在 JSON 配置中不会被展开。
+
+**Cursor** — 在 Settings → MCP Servers 中添加（同样用绝对路径）：
 
 ```json
 {
   "mempalace": {
     "command": "mempalace-mcp",
     "env": {
-      "MEMPALACE_PATH": "~/.mempalace",
+      "MEMPALACE_PATH": "C:/Users/你的用户名/.mempalace",
       "MEMPALACE_WING": "my_project"
     }
   }
 }
 ```
+
+> 如果 `mempalace-mcp` 命令找不到，改用：`"command": "python", "args": ["-m", "mempalace_evolve.adapters.mcp_server"]`
 
 ### 第三步：重启 AI 工具
 
@@ -375,6 +395,14 @@ Claude Code 支持 hook，对话结束时自动执行命令：
 def on_session_end(messages):
     palace.digest(messages)  # 提取知识
     palace.evolve()          # 进化
+```
+
+**SDK 模式 — 内置自动进化（最简单）**
+
+```python
+# auto_evolve=True 自动启动后台线程，每小时 evolve 一次
+palace = MemPalace("./memory", auto_evolve=True, evolve_interval=3600)
+# 之后正常使用即可，不需要手动调 evolve()
 ```
 
 **SDK 模式 — 定时任务**

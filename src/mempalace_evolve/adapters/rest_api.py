@@ -33,8 +33,10 @@ def create_app(palace_path: str | None = None, wing: str = "global", api_key: st
         )
 
     from mempalace_evolve.sdk import MemPalace
+    import threading
 
     palace = MemPalace(palace_path, wing=wing)
+    _write_lock = threading.Lock()
     app = FastAPI(
         title="MemPalace Evolve API",
         version="0.1.0",
@@ -73,9 +75,10 @@ def create_app(palace_path: str | None = None, wing: str = "global", api_key: st
 
     @app.post("/remember")
     def remember(req: RememberRequest):
-        drawer_id = palace.remember(
-            req.content, room=req.room, metadata=req.metadata, source=req.source
-        )
+        with _write_lock:
+            drawer_id = palace.remember(
+                req.content, room=req.room, metadata=req.metadata, source=req.source
+            )
         return {"drawer_id": drawer_id, "status": "stored"}
 
     @app.post("/recall")
@@ -85,14 +88,16 @@ def create_app(palace_path: str | None = None, wing: str = "global", api_key: st
 
     @app.post("/forget/{drawer_id}")
     def forget(drawer_id: str):
-        ok = palace.forget(drawer_id)
+        with _write_lock:
+            ok = palace.forget(drawer_id)
         if not ok:
             raise HTTPException(404, "Memory not found")
         return {"status": "deleted"}
 
     @app.post("/kg/add")
     def add_fact(req: FactRequest):
-        palace.add_fact(req.subject, req.predicate, req.object)
+        with _write_lock:
+            palace.add_fact(req.subject, req.predicate, req.object)
         return {"status": "added"}
 
     @app.post("/kg/query/{entity}")
@@ -102,7 +107,8 @@ def create_app(palace_path: str | None = None, wing: str = "global", api_key: st
 
     @app.post("/evolve")
     def evolve(req: EvolveRequest):
-        report = palace.evolve(transcript=req.transcript)
+        with _write_lock:
+            report = palace.evolve(transcript=req.transcript)
         return report
 
     class DigestRequest(BaseModel):
@@ -112,7 +118,8 @@ def create_app(palace_path: str | None = None, wing: str = "global", api_key: st
     @app.post("/digest")
     def digest(req: DigestRequest):
         conversation = req.messages or req.transcript or ""
-        result = palace.digest(conversation)
+        with _write_lock:
+            result = palace.digest(conversation)
         return result
 
     @app.get("/export")

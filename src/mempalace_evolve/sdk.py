@@ -24,12 +24,15 @@ class MemPalace:
     managing knowledge graphs, and running evolution pipelines.
     """
 
-    def __init__(self, palace_path: str | Path = None, wing: str = "global"):
+    def __init__(self, palace_path: str | Path = None, wing: str = "global",
+                 auto_evolve: bool = False, evolve_interval: int = 3600):
         """Initialize a MemPalace instance.
 
         Args:
             palace_path: Path to the palace directory. Defaults to ~/.mempalace
             wing: Wing/project name for scoping memories.
+            auto_evolve: If True, run evolve() automatically in background.
+            evolve_interval: Seconds between auto-evolve cycles (default 3600 = 1h).
         """
         from mempalace_evolve.core.config import PalaceConfig
 
@@ -42,6 +45,11 @@ class MemPalace:
         self._chroma = None
         self._kg = None
         self._layers = None
+        self._evolve_thread = None
+        self._evolve_stop = None
+
+        if auto_evolve:
+            self._start_auto_evolve(evolve_interval)
 
     @property
     def path(self) -> Path:
@@ -205,7 +213,16 @@ class MemPalace:
             )
             stored.append({"id": drawer_id, "type": room, "score": c["score"]})
 
-        return {"extracted": len(candidates), "stored": stored}
+        # Auto-extract knowledge graph triples from stored content
+        triples = []
+        try:
+            triples = self._extract_triples(candidates)
+            for s, p, o in triples:
+                self.add_fact(s, p, o)
+        except Exception as e:
+            logger.debug("KG triple extraction skipped: %s", e)
+
+        return {"extracted": len(candidates), "stored": stored, "triples": len(triples)}
 
     def context_for(self, query: str, *, limit: int = 5) -> str:
         """Get relevant context for a new query (for prompt injection).
@@ -332,8 +349,64 @@ class MemPalace:
             self._chroma = get_collection(str(self._path / "palace"), create=True)
         return self._chroma
 
+    def _extract_triples(self, candidates: list[dict]) -> list[tuple[str, str, str]]:
+        """Extract subject-predicate-object triples from candidates using patterns."""
+        import re
+        triples = []
+        patterns = [
+            # "X uses Y", "X 使用 Y"
+            (r"(?:use|uses|using|用|使用)\s+(\w[\w\s]*\w)", "uses"),
+            # "X built with Y", "X 基于 Y"
+            (r"(?:built.with|based.on|基于)\s+(\w[\w\s]*\w)", "built_with"),
+            # "X stores in Y", "X 存储在 Y"
+            (r"(?:stores?.in|saved?.in|存储在|保存在)\s+(\w[\w\s]*\w)", "stores_in"),
+            # "decided to use X", "决定用 X"
+            (r"(?:decided?.to.use|决定用|选择了)\s+(\w[\w\s]*\w)", "decided"),
+            # "X depends on Y"
+            (r"(?:depends?.on|依赖)\s+(\w[\w\s]*\w)", "depends_on"),
+            # "X replaced Y", "X 替换 Y"
+            (r"(?:replaced?|替换了?|换成)\s+(\w[\w\s]*\w)", "replaced"),
+        ]
+        for c in candidates:
+            content = c.get("content", "")[:500]
+            for pattern, predicate in patterns:
+                matches = re.findall(pattern, content, re.IGNORECASE)
+                for match in matches[:2]:
+                    obj = match.strip()[:50]
+                    if len(obj) > 2:
+                        subj = self._wing or "project"
+                        triples.append((subj, predicate, obj))
+        return triples
+
     def _get_kg(self):
         if self._kg is None:
             from mempalace_evolve.core.knowledge_graph import KnowledgeGraph
             self._kg = KnowledgeGraph(str(self._path / "knowledge_graph.sqlite3"))
         return self._kg
+
+    def _start_auto_evolve(self, interval: int):
+        """Start background thread that runs evolve() periodically."""
+        import threading
+
+        self._evolve_stop = threading.Event()
+
+        def _loop():
+            while not self._evolve_stop.wait(interval):
+                try:
+                    self.evolve()
+                    logger.debug("Auto-evolve completed")
+                except Exception as e:
+                    logger.debug("Auto-evolve failed: %s", e)
+
+        self._evolve_thread = threading.Thread(
+            target=_loop, daemon=True, name="mempalace-auto-evolve"
+        )
+        self._evolve_thread.start()
+        logger.info("Auto-evolve started (interval=%ds)", interval)
+
+    def stop_auto_evolve(self):
+        """Stop the background auto-evolve thread."""
+        if self._evolve_stop:
+            self._evolve_stop.set()
+            self._evolve_thread = None
+            logger.info("Auto-evolve stopped")
