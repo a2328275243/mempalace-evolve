@@ -45,31 +45,46 @@ def get_today_drawers(collection, wing=None):
 
 
 def _text_similarity(text1: str, text2: str) -> float:
-    """计算文本相似度，同时支持中文和英文。
+    """计算文本相似度，用于去重检测。
 
-    使用字符级 n-gram（bigram）代替词级 Jaccard，
-    因为中文不使用空格分词，词级 split() 对中文无效。
+    设计原则：宁可漏判也不误杀。
+    文本级去重只负责捕获「完全相同内容被重复保存」的情况。
+    标准化处理：统一空白、去除尾部标点后做精确比较。
+    语义级去重（"相似但不同的表述"）应由 ChromaDB 向量距离承担。
+
+    返回值：
+    - 1.0: 标准化后完全相同（应合并）
+    - < 0.90: 有任何实质差异（不触发 0.95 阈值）
     """
     if not text1 or not text2:
         return 0.0
 
-    # 生成字符 bigram 集合
-    def _bigrams(s: str) -> set:
-        return {s[i:i+2] for i in range(len(s) - 1)} if len(s) >= 2 else {s}
+    import re
 
-    bg1 = _bigrams(text1)
-    bg2 = _bigrams(text2)
+    def _normalize(s: str) -> str:
+        """统一空白、去尾部标点、折叠连续空格"""
+        s = re.sub(r'\s+', ' ', s).strip()
+        s = s.rstrip('.,;:!?。，；：！？')
+        return s
 
-    if not bg1 or not bg2:
-        return 0.0
+    n1 = _normalize(text1)
+    n2 = _normalize(text2)
 
-    intersection = len(bg1 & bg2)
-    union = len(bg1 | bg2)
-    return intersection / union if union > 0 else 0.0
+    if n1 == n2:
+        return 1.0
+
+    # 任何实质性文本差异 → 返回低分，不触发合并
+    # 用 SequenceMatcher 给出参考分数（用于日志/调试），但压到安全范围
+    from difflib import SequenceMatcher
+    raw_ratio = SequenceMatcher(None, n1, n2).ratio()
+    return raw_ratio * 0.85  # 确保最高不超过 ~0.85
 
 
-def identify_duplicates(drawers, threshold=0.85):
-    """识别重复记忆（基于字符级 n-gram 相似度，支持中英文）"""
+def identify_duplicates(drawers, threshold=0.95):
+    """识别重复记忆（基于字符级 n-gram 相似度，支持中英文）
+
+    threshold 默认 0.95：仅合并几乎完全相同的记忆，避免误杀。
+    """
     duplicates = []
 
     for i, d1 in enumerate(drawers):
