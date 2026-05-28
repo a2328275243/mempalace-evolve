@@ -134,6 +134,7 @@ class MemPalace:
         room: str | None = None,
         threshold: float = 0.8,
         hybrid: bool = True,
+        cross_wing: bool | str = False,
     ) -> list[dict[str, Any]]:
         """Search memories by semantic similarity + knowledge graph expansion.
 
@@ -142,8 +143,12 @@ class MemPalace:
             limit: Max results to return.
             room: Optional room filter.
             threshold: Max distance to include (0-1, lower = more similar).
-                       Default 0.8 filters out clearly irrelevant results.
             hybrid: If True, expand results via KG entity relationships.
+            cross_wing: Memory sharing mode:
+                - False: only search current wing (default)
+                - True: search ALL wings
+                - "auto": search current wing first, fallback to all wings
+                  if no good results found (distance > 0.5)
 
         Returns:
             List of matching memories with content and metadata.
@@ -152,9 +157,16 @@ class MemPalace:
         if collection is None:
             return []
 
-        where = {"wing": self._wing}
-        if room:
-            where = {"$and": [{"wing": self._wing}, {"room": room}]}
+        # Determine wing filter
+        search_all = cross_wing is True
+        auto_fallback = cross_wing == "auto"
+
+        if search_all:
+            where = {"room": room} if room else None
+        else:
+            where = {"wing": self._wing}
+            if room:
+                where = {"$and": [{"wing": self._wing}, {"room": room}]}
 
         try:
             results = collection.query(
@@ -186,6 +198,28 @@ class MemPalace:
                     touch_drawers(collection, recalled_ids)
                 except Exception:
                     pass
+
+        # Auto fallback: if current wing has no good results, search all wings
+        if auto_fallback and not output:
+            try:
+                fallback_where = {"room": room} if room else None
+                fallback_results = collection.query(
+                    query_texts=[query], n_results=limit, where=fallback_where,
+                )
+                if fallback_results and fallback_results.get("documents"):
+                    fb_docs = fallback_results["documents"][0]
+                    fb_metas = fallback_results["metadatas"][0] if fallback_results.get("metadatas") else [{}] * len(fb_docs)
+                    fb_dists = fallback_results["distances"][0] if fallback_results.get("distances") else [0.0] * len(fb_docs)
+                    fb_ids = fallback_results["ids"][0] if fallback_results.get("ids") else []
+                    for doc, meta, dist, did in zip(fb_docs, fb_metas, fb_dists, fb_ids):
+                        if dist <= threshold and did not in seen_ids:
+                            output.append({
+                                "content": doc, "metadata": meta,
+                                "distance": dist, "source": "cross_wing_fallback",
+                            })
+                            seen_ids.add(did)
+            except Exception:
+                pass
 
         # Hybrid: expand via knowledge graph
         if hybrid and output:
@@ -248,12 +282,13 @@ class MemPalace:
 
         return {"extracted": len(candidates), "stored": stored, "triples": len(triples)}
 
-    def context_for(self, query: str, *, limit: int = 5) -> str:
+    def context_for(self, query: str, *, limit: int = 10, max_tokens: int = 2000) -> str:
         """Get relevant context for a new query (for prompt injection).
 
         Args:
             query: The user's new question/message.
-            limit: Max memories to include.
+            limit: Max memories to search.
+            max_tokens: Approximate max characters to return (prevents context overflow).
 
         Returns:
             Formatted string ready to inject into system prompt.
@@ -262,11 +297,16 @@ class MemPalace:
         if not results:
             return ""
         lines = []
+        total_len = 0
         for r in results:
             meta = r.get("metadata", {})
             room = meta.get("room", "")
             prefix = f"[{room}] " if room else ""
-            lines.append(f"- {prefix}{r['content'][:500]}")
+            line = f"- {prefix}{r['content'][:500]}"
+            if total_len + len(line) > max_tokens:
+                break
+            lines.append(line)
+            total_len += len(line) + 1
         return "\n".join(lines)
 
     def export(self, format: str = "json", output: str | None = None):
@@ -285,6 +325,81 @@ class MemPalace:
         if format == "markdown":
             return export_markdown(collection, wing=self._wing, output=output)
         return export_json(collection, wing=self._wing, output=output)
+
+    def import_memories(self, source: str | Path | list[dict]) -> dict:
+        """Import memories from JSON file or list of dicts.
+
+        Args:
+            source: Path to a JSON file, or a list of memory dicts.
+                Each dict should have: {"content": str, "room": str}
+                Optional fields: "metadata", "wing" (defaults to current wing).
+
+        Returns:
+            {"imported": int, "skipped": int, "errors": list}
+        """
+        import json
+
+        if isinstance(source, (str, Path)):
+            with open(source, "r", encoding="utf-8") as f:
+                items = json.load(f)
+        else:
+            items = source
+
+        if not isinstance(items, list):
+            items = [items]
+
+        imported = 0
+        skipped = 0
+        errors = []
+
+        for item in items:
+            content = item.get("content", "").strip()
+            if not content:
+                skipped += 1
+                continue
+            room = item.get("room", "general")
+            metadata = item.get("metadata")
+            try:
+                self.remember(content, room=room, metadata=metadata)
+                imported += 1
+            except Exception as e:
+                errors.append({"content": content[:50], "error": str(e)})
+
+        return {"imported": imported, "skipped": skipped, "errors": errors}
+
+    def stats(self) -> dict:
+        """Get memory palace statistics.
+
+        Returns:
+            Dict with total count, per-room distribution, KG entity count, etc.
+        """
+        collection = self._get_collection()
+        result = {"wing": self._wing, "total": 0, "rooms": {}, "kg_entities": 0}
+
+        if not collection:
+            return result
+
+        try:
+            all_items = collection.get(
+                where={"wing": self._wing},
+                include=["metadatas"],
+            )
+            if all_items and all_items.get("ids"):
+                result["total"] = len(all_items["ids"])
+                for meta in all_items["metadatas"]:
+                    room = meta.get("room", "general")
+                    result["rooms"][room] = result["rooms"].get(room, 0) + 1
+        except Exception:
+            pass
+
+        try:
+            kg = self._get_kg()
+            entities = kg.get_all_entity_names()
+            result["kg_entities"] = len(entities) if entities else 0
+        except Exception:
+            pass
+
+        return result
 
     # ------------------------------------------------------------------
     # Knowledge Graph
