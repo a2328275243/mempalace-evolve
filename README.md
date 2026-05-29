@@ -118,33 +118,40 @@ MCP（Model Context Protocol）让 AI 自动拥有记忆工具。配置一次，
 pip install "mempalace-evolve[mcp] @ git+https://github.com/a2328275243/mempalace-evolve.git"
 ```
 
-### 第二步：配置 MCP Server
+### 第二步：一键配置（推荐）
+
+安装后运行交互式向导，自动检测环境、写入配置：
+
+```bash
+mempalace setup
+```
+
+向导会自动完成：
+1. 检测 Python / chromadb / fastmcp 是否安装
+2. 检测 Claude Code / Cursor 配置目录
+3. 收集 wing 名称和存储路径
+4. 写入 MCP 配置（自动备份旧配置）
+5. 验证 MCP Server 能正常启动
+
+也可以跳过交互，直接指定参数：
+
+```bash
+mempalace setup --wing my_project --palace ~/.mempalace
+```
+
+### 手动配置（备选）
+
+如果向导不适合你的环境，可以手动编辑配置文件：
 
 **Claude Code** — 编辑 `~/.claude/settings.json`：
 
-Windows：
 ```json
 {
   "mcpServers": {
     "mempalace": {
       "command": "mempalace-mcp",
       "env": {
-        "MEMPALACE_PATH": "C:/Users/你的用户名/.mempalace",
-        "MEMPALACE_WING": "my_project"
-      }
-    }
-  }
-}
-```
-
-Mac / Linux：
-```json
-{
-  "mcpServers": {
-    "mempalace": {
-      "command": "mempalace-mcp",
-      "env": {
-        "MEMPALACE_PATH": "/Users/你的用户名/.mempalace",
+        "MEMPALACE_PATH": "绝对路径/.mempalace",
         "MEMPALACE_WING": "my_project"
       }
     }
@@ -161,7 +168,7 @@ Mac / Linux：
   "mempalace": {
     "command": "mempalace-mcp",
     "env": {
-      "MEMPALACE_PATH": "C:/Users/你的用户名/.mempalace",
+      "MEMPALACE_PATH": "绝对路径/.mempalace",
       "MEMPALACE_WING": "my_project"
     }
   }
@@ -726,6 +733,7 @@ stats = palace.stats()
 ## CLI 命令
 
 ```bash
+python -m mempalace_evolve.cli setup --wing my_project   # 一键配置 MCP
 python -m mempalace_evolve.cli demo          # 一键演示全部功能
 python -m mempalace_evolve.cli doctor        # 检查安装环境
 python -m mempalace_evolve.cli playground    # 交互式 REPL
@@ -748,6 +756,7 @@ src/mempalace_evolve/
 ├── exceptions.py        # 自定义异常（StorageError/ValidationError 等）
 ├── export.py            # 记忆导出（JSON/Markdown）
 ├── cli.py               # 命令行工具
+├── setup_wizard.py      # 一键安装向导（mempalace setup）
 ├── demo.py              # 一键演示
 ├── doctor.py            # 环境检查
 ├── playground.py        # 交互式 REPL

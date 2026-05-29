@@ -50,6 +50,11 @@ def main():
     p_pg = sub.add_parser("playground", help="Interactive memory playground")
     p_pg.add_argument("--palace", default=None, help="Palace path")
 
+    # mempalace setup
+    p_setup = sub.add_parser("setup", help="Interactive MCP setup wizard")
+    p_setup.add_argument("--wing", default=None, help="Wing/project name")
+    p_setup.add_argument("--palace", default=None, help="Palace storage path")
+
     # mempalace export --format json --output memories.json
     p_exp = sub.add_parser("export", help="Export memories to JSON or Markdown")
     p_exp.add_argument("--format", choices=["json", "markdown"], default="json")
@@ -75,6 +80,10 @@ def main():
         from mempalace_evolve.playground import run_playground
         run_playground(palace_path=args.palace)
         return
+    if args.command == "setup":
+        from mempalace_evolve.setup_wizard import run_setup
+        ok = run_setup(wing=args.wing, palace_path=args.palace)
+        sys.exit(0 if ok else 1)
 
     # Commands that need a palace instance
     try:
