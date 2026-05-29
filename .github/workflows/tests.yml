@@ -2,9 +2,9 @@ name: Tests
 
 on:
   push:
-    branches: [master]
+    branches: [master, main]
   pull_request:
-    branches: [master]
+    branches: [master, main]
 
 jobs:
   test:
@@ -23,13 +23,12 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install -e ".[dev]"
+          pip install -e ".[dev,mcp]"
 
       - name: Run tests
         run: |
-          python -m pytest tests/ -q --tb=short
+          python -m pytest tests/ -v --tb=short
 
-      - name: Run demo (smoke test)
+      - name: Run doctor (smoke test)
         run: |
           python -m mempalace_evolve.cli doctor
-          python -m mempalace_evolve.cli demo

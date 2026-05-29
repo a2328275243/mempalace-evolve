@@ -19,3 +19,11 @@ palace/
 .ruff_cache/
 .pytest_cache/
 .mypy_cache/
+.coverage
+htmlcov/
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
