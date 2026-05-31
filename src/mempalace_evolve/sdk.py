@@ -183,8 +183,17 @@ class MemPalace:
                 logger.info("Skipped duplicate memory (similarity: %.2f)", dedup_result["similar"][0]["similarity"])
                 return drawer_id  # Return ID but mark as duplicate
             elif dedup_result["action"] == "merge":
-                # TODO: implement merge logic
-                pass
+                # Merge similar content into existing memory
+                from mempalace_evolve.core.dedup import merge_similar_content
+                existing_content = dedup_result["matched_content"]
+                merged_content = merge_similar_content(existing_content, content)
+                # Update the existing memory
+                collection.update(
+                    ids=[dedup_result["matched_id"]],
+                    documents=[merged_content]
+                )
+                logger.info("Merged duplicate memory into %s", dedup_result["matched_id"])
+                return dedup_result["matched_id"]  # Return the merged memory ID
 
         return drawer_id
 

@@ -65,6 +65,7 @@ def main():
     p_rev = sub.add_parser("review", help="Show memories due for spaced repetition review")
     p_rev.add_argument("--palace", default=None, help="Palace path")
     p_rev.add_argument("--limit", type=int, default=10, help="Max memories to show")
+    p_rev.add_argument("--mark", metavar="ID", help="Mark a memory as reviewed by its ID")
 
     # mempalace top (importance scores)
     p_top = sub.add_parser("top", help="Show top N most important memories")
@@ -137,9 +138,18 @@ def main():
             print(json.dumps(result, ensure_ascii=False, indent=2))
     elif args.command == "review":
         due = palace.get_due_for_review()
-        print(f"Memories due for review: {len(due)}")
-        for mem in due[:args.limit]:
-            print(f"  [{mem['interval_index']}] {mem['content'][:80]}...")
+        if args.mark:
+            # Mark a specific memory as reviewed
+            ok = palace.mark_reviewed(args.mark)
+            if ok:
+                print(f"Marked {args.mark} as reviewed")
+            else:
+                print(f"Failed to mark {args.mark} (not found)")
+        else:
+            # Show memories due for review
+            print(f"Memories due for review: {len(due)}")
+            for mem in due[:args.limit]:
+                print(f"  [{mem['interval_index']}] {mem['content'][:80]}...")
     elif args.command == "top":
         top = palace.top_memories(args.n)
         print(f"Top {len(top)} important memories:")

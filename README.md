@@ -670,6 +670,87 @@ project_c 召回 → cross_wing_hits = 3 ← 触发晋升
 
 不需要人工干预，系统根据实际使用模式自动识别"通用经验"。
 
+### 间隔复习 (Spaced Repetition)
+
+让重要记忆按照艾宾浩斯遗忘曲线复习：
+
+```python
+# 查看有哪些记忆需要复习
+due = palace.get_due_for_review()
+print(f"待复习记忆: {len(due)} 条")
+
+# 标记某条记忆已复习，系统会自动安排下次复习时间
+palace.mark_reviewed("drawer_xxx")
+
+# 或者 snooze 推迟复习
+palace.snooze_memory("drawer_xxx", days=3)
+```
+
+复习间隔：`1天 → 3天 → 7天 → 14天 → 30天 → 60天 → 90天`
+
+CLI 用法：
+```bash
+mempalace review                    # 显示待复习记忆
+mempalace review --mark drawer_xxx # 标记为已复习
+```
+
+**触发条件：** 记忆被召回 2 次以上才进入间隔复习池。
+
+### 重要性自动评分
+
+系统根据多个维度自动计算每条记忆的重要性分数 (0.0 - 1.0)：
+
+| 维度 | 权重 | 说明 |
+|------|------|------|
+| recall_frequency | 30% | 被召回次数 |
+| kg_centrality | 25% | 知识图谱关联数量 |
+| recency | 20% | 最近访问时间（30天半衰期） |
+| cross_wing_hits | 15% | 跨项目使用次数 |
+| content_quality | 10% | 内容长度 + 关键词信号 |
+
+```python
+# 获取重要性 Top 10
+top = palace.top_memories(10)
+for mem in top:
+    print(f"[{mem['score']:.2f}] {mem['content'][:50]}...")
+
+# 全量评分
+result = palace.score_memories()
+print(f"已评分: {result['scored']} 条")
+```
+
+CLI 用法：
+```bash
+mempalace top 20     # 显示 Top 20 最重要记忆
+```
+
+### 相似度去重
+
+存入新记忆前自动检查相似内容，避免重复存储：
+
+```python
+palace = MemPalace("./memory", scoring_config={
+    "dedup_threshold": 0.85,    # 相似度 ≥ 85% 视为重复
+    "dedup_action": "skip",     # skip / merge / allow
+})
+```
+
+- **skip**: 跳过存储，返回已有记忆的 ID
+- **merge**: 合并到已有记忆（保留更长的，追加不同的部分）
+- **allow**: 忽略阈值，仍存储
+
+```python
+# 查找相似记忆
+similar = palace.find_similar("Python 3.12 新特性", room="decisions")
+for mem in similar:
+    print(f"[相似度 {mem['similarity']:.2f}] {mem['content'][:50]}...")
+```
+
+CLI 用法：
+```bash
+mempalace similar "Python 3.12 新特性" --threshold 0.8
+```
+
 ### 上下文长度控制
 
 防止注入过多记忆撑爆 LLM 上下文窗口：
