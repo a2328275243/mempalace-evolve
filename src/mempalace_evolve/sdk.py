@@ -166,7 +166,117 @@ class MemPalace:
         )
         drawer_id = _make_drawer_id(self._wing, room, source_key, chunk_index)
         logger.debug("Stored memory %s in %s/%s", drawer_id, self._wing, room)
+
+        # --- Similarity dedup: check for similar memories before storing ---
+        dedup_threshold = self._scoring_config.get("dedup_threshold", 0.85)
+        if dedup_threshold > 0:
+            from mempalace_evolve.core.dedup import check_and_deduplicate
+            dedup_result = check_and_deduplicate(
+                collection=collection,
+                wing=self._wing,
+                content=content,
+                room=room,
+                threshold=dedup_threshold,
+                action=self._scoring_config.get("dedup_action", "skip"),
+            )
+            if dedup_result["action"] == "skip":
+                logger.info("Skipped duplicate memory (similarity: %.2f)", dedup_result["similar"][0]["similarity"])
+                return drawer_id  # Return ID but mark as duplicate
+            elif dedup_result["action"] == "merge":
+                # TODO: implement merge logic
+                pass
+
         return drawer_id
+
+    def get_due_for_review(self) -> list[dict]:
+        """Get memories due for spaced repetition review.
+
+        Returns:
+            List of memory dicts due for review.
+        """
+        from mempalace_evolve.core.spaced_repetition import get_memories_due_for_review
+        collection = self._get_collection()
+        if not collection:
+            return []
+        return get_memories_due_for_review(collection, wing=self._wing)
+
+    def mark_reviewed(self, drawer_id: str) -> bool:
+        """Mark a memory as reviewed (for spaced repetition).
+
+        Args:
+            drawer_id: ID of the memory.
+
+        Returns:
+            True if successful.
+        """
+        from mempalace_evolve.core.spaced_repetition import mark_reviewed
+        collection = self._get_collection()
+        if not collection:
+            return False
+        # Get current interval index
+        try:
+            data = collection.get(ids=[drawer_id], include=["metadatas"])
+            if data and data.get("metadatas"):
+                meta = data["metadatas"][0]
+                interval_idx = int(meta.get("interval_index", 0))
+                return mark_reviewed(collection, drawer_id, interval_idx)
+        except Exception:
+            pass
+        return mark_reviewed(collection, drawer_id, 0)
+
+    def snooze_memory(self, drawer_id: str, days: int = 1) -> bool:
+        """Snooze a memory for N days.
+
+        Args:
+            drawer_id: ID of the memory.
+            days: Days to snooze.
+
+        Returns:
+            True if successful.
+        """
+        from mempalace_evolve.core.spaced_repetition import snooze
+        collection = self._get_collection()
+        if not collection:
+            return False
+        return snooze(collection, drawer_id, days)
+
+    def score_memories(self) -> dict:
+        """Score all memories by importance (auto-scoring).
+
+        Returns:
+            Dict with scoring results.
+        """
+        from mempalace_evolve.core.importance_scorer import score_all_memories
+        return score_all_memories(self)
+
+    def top_memories(self, n: int = 10) -> list[dict]:
+        """Get top N most important memories.
+
+        Args:
+            n: Number of memories to return.
+
+        Returns:
+            List of top memory dicts.
+        """
+        from mempalace_evolve.core.importance_scorer import get_top_memories
+        return get_top_memories(self, n)
+
+    def find_similar(self, content: str, room: str | None = None, threshold: float = 0.85) -> list[dict]:
+        """Find similar memories to the given content.
+
+        Args:
+            content: Content to search for.
+            room: Optional room filter.
+            threshold: Minimum similarity (0-1).
+
+        Returns:
+            List of similar memory dicts.
+        """
+        from mempalace_evolve.core.dedup import find_similar_memories
+        collection = self._get_collection()
+        if not collection:
+            return []
+        return find_similar_memories(collection, self._wing, content, room, threshold)
 
     def recall(
         self,

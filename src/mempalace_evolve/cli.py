@@ -61,6 +61,23 @@ def main():
     p_exp.add_argument("--output", "-o", default=None, help="Output file path")
     p_exp.add_argument("--palace", default=None, help="Palace path")
 
+    # mempalace review (spaced repetition)
+    p_rev = sub.add_parser("review", help="Show memories due for spaced repetition review")
+    p_rev.add_argument("--palace", default=None, help="Palace path")
+    p_rev.add_argument("--limit", type=int, default=10, help="Max memories to show")
+
+    # mempalace top (importance scores)
+    p_top = sub.add_parser("top", help="Show top N most important memories")
+    p_top.add_argument("n", type=int, nargs="?", default=10, help="Number of memories")
+    p_top.add_argument("--palace", default=None, help="Palace path")
+
+    # mempalace similar "content"
+    p_sim = sub.add_parser("similar", help="Find similar memories to content")
+    p_sim.add_argument("content", help="Content to search for")
+    p_sim.add_argument("--room", default=None, help="Room filter")
+    p_sim.add_argument("--threshold", type=float, default=0.85, help="Similarity threshold")
+    p_sim.add_argument("--palace", default=None, help="Palace path")
+
     args = parser.parse_args()
 
     if args.command is None:
@@ -118,6 +135,21 @@ def main():
         else:
             import json
             print(json.dumps(result, ensure_ascii=False, indent=2))
+    elif args.command == "review":
+        due = palace.get_due_for_review()
+        print(f"Memories due for review: {len(due)}")
+        for mem in due[:args.limit]:
+            print(f"  [{mem['interval_index']}] {mem['content'][:80]}...")
+    elif args.command == "top":
+        top = palace.top_memories(args.n)
+        print(f"Top {len(top)} important memories:")
+        for mem in top:
+            print(f"  [{mem['score']:.2f}] {mem['content'][:60]}...")
+    elif args.command == "similar":
+        similar = palace.find_similar(args.content, room=args.room, threshold=args.threshold)
+        print(f"Similar memories: {len(similar)}")
+        for mem in similar:
+            print(f"  [{mem['similarity']:.2f}] {mem['content'][:60]}...")
 
 
 if __name__ == "__main__":
