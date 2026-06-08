@@ -83,8 +83,8 @@ def evolve_candidate_promotion(collection, dry_run: bool = True,
                 try:
                     collection.update(ids=[doc_id], documents=[doc], metadatas=[meta])
                     promoted += 1
-                except Exception:
-                    logger.debug("promote failed for %s", doc_id, exc_info=True)
+                except Exception as e:
+                    logger.warning(f"Failed to promote candidate '{doc_id}': {e}")
 
     # --- Part 2: cross-wing hot memories → procedural ---
     try:
@@ -101,12 +101,12 @@ def evolve_candidate_promotion(collection, dry_run: bool = True,
                         try:
                             collection.update(ids=[doc_id], metadatas=[meta])
                             upgraded_to_procedural += 1
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.warning(f"Failed to upgrade to procedural '{doc_id}': {e}")
                     else:
                         upgraded_to_procedural += 1
-    except Exception:
-        pass
+    except Exception as e:
+        logger.error(f"Cross-wing hot memories scan failed: {e}")
 
     return {
         "action": "candidate_promotion",
@@ -147,14 +147,21 @@ def evolve_orphan_entities(dry_run: bool = True) -> dict:
         }
 
     removed = 0
+    failed = 0
     for entity in orphans:
         try:
-            kg.remove_entity(entity)
-            removed += 1
-        except Exception:
-            logger.debug("remove orphan failed: %s", entity, exc_info=True)
+            if kg.remove_entity(entity):
+                removed += 1
+            else:
+                logger.warning(f"Entity not found during orphan cleanup: {entity}")
+        except Exception as e:
+            failed += 1
+            logger.warning(f"Failed to remove orphan entity '{entity}': {e}")
 
-    return {"action": "orphan_cleanup", "removed": removed}
+    if failed > 0:
+        logger.warning(f"Orphan cleanup completed with {failed} failures")
+
+    return {"action": "orphan_cleanup", "removed": removed, "failed": failed}
 
 
 def evolve_stale_decisions(collection, dry_run: bool = True,
@@ -168,8 +175,9 @@ def evolve_stale_decisions(collection, dry_run: bool = True,
             where={"room": "decisions"},
             include=["documents", "metadatas"],
         )
-    except Exception:
-        return {"action": "stale_decisions", "error": "query failed"}
+    except Exception as e:
+        logger.error(f"Failed to query decisions: {e}")
+        return {"action": "stale_decisions", "error": f"query failed: {e}"}
 
     if not decisions or not decisions["ids"]:
         return {"action": "stale_decisions", "total": 0, "stale": 0}
@@ -200,16 +208,21 @@ def evolve_stale_decisions(collection, dry_run: bool = True,
         }
 
     marked = 0
+    failed = 0
     for doc_id, doc, meta in stale:
         meta["status"] = "stale"
         meta["stale_marked_at"] = now.isoformat()
         try:
             collection.update(ids=[doc_id], documents=[doc], metadatas=[meta])
             marked += 1
-        except Exception:
-            logger.debug("stale mark failed for %s", doc_id, exc_info=True)
+        except Exception as e:
+            failed += 1
+            logger.warning(f"Failed to mark decision as stale '{doc_id}': {e}")
 
-    return {"action": "stale_decisions", "marked_stale": marked}
+    if failed > 0:
+        logger.warning(f"Stale decision marking completed with {failed} failures")
+
+    return {"action": "stale_decisions", "marked_stale": marked, "failed": failed}
 
 
 def run_opportunistic_evolve(collection, dry_run: bool = True,

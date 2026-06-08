@@ -227,9 +227,14 @@ class UserConfig:
             for line in text.split("\n"):
                 line = line.strip()
                 if "- **路径**：`" in line or "- **路径**: `" in line:
-                    start = line.index("`") + 1
-                    end = line.index("`", start)
-                    proj_path = line[start:end]
+                    try:
+                        start = line.index("`") + 1
+                        end = line.index("`", start)
+                        proj_path = line[start:end]
+                    except ValueError:
+                        # 没有配对的反引号，跳过此行
+                        logger.warning(f"Malformed path line in memory.md: {line[:50]}...")
+                        continue
                     # 检查是否已在列表中
                     if not any(p.get("path") == proj_path for p in projects):
                         palace = str(Path(proj_path) / ".mempalace")

@@ -10,6 +10,7 @@ Or programmatically:
 
 from __future__ import annotations
 
+import secrets
 from pathlib import Path
 from typing import Any
 
@@ -50,7 +51,8 @@ def create_app(palace_path: str | None = None, wing: str = "global", api_key: st
             if request.url.path == "/health":
                 return await call_next(request)
             key = request.headers.get("X-API-Key", "")
-            if key != api_key:
+            # Use constant-time comparison to prevent timing attacks
+            if not secrets.compare_digest(key, api_key):
                 return JSONResponse(status_code=401, content={"error": "Invalid API key"})
             return await call_next(request)
 

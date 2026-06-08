@@ -181,6 +181,29 @@ class KnowledgeGraph:
         # conn reused — do not close
         return eid
 
+    def remove_entity(self, name: str) -> bool:
+        """Remove an entity and all its relationships.
+
+        Args:
+            name: Entity name to remove.
+
+        Returns:
+            True if entity was removed, False if not found.
+        """
+        eid = self._entity_id(name)
+        conn = self._conn()
+
+        # Delete triples where this entity is subject or object (by entity ID)
+        conn.execute("DELETE FROM triples WHERE subject=? OR object=?", (eid, eid))
+
+        # Delete the entity itself
+        conn.execute("PRAGMA foreign_keys = OFF")
+        cursor = conn.execute("DELETE FROM entities WHERE id=?", (eid,))
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.commit()
+
+        return cursor.rowcount > 0
+
     def add_triple(
         self,
         subject: str,

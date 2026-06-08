@@ -306,13 +306,22 @@ class Layer3:
                    n_results: int = 5, time_range=None, time_bonus_weight: float = 0.0,
                    adaptive: bool = False, cross_wing_diversity: bool = False) -> list[dict]:
         # 共指消解：将查询中的代词替换为实际实体名
+        _resolve_query = None
         try:
             from coref_resolver import resolve_query as _resolve_query
-            resolved_query = _resolve_query(query)
-            if resolved_query != query:
-                query = resolved_query
-        except Exception:
-            logger.debug("coref resolution failed for query", exc_info=True)
+            logger.info("Coreference resolution enabled")
+        except ImportError:
+            logger.warning("coref_resolver not installed - coreference resolution disabled. Install with: pip install coref_resolver")
+        except Exception as e:
+            logger.warning(f"Coreference resolution failed to load: {e}")
+
+        if _resolve_query:
+            try:
+                resolved_query = _resolve_query(query)
+                if resolved_query != query:
+                    query = resolved_query
+            except Exception as e:
+                logger.debug(f"Coreference resolution failed for query: {e}")
 
         col = get_collection(self.palace_path, create=False)
         if not col or col.count() == 0:
@@ -421,17 +430,26 @@ class Layer3:
                 logger.debug("exact match bonus failed", exc_info=True)
 
         # 时间感知加权
+        _time_overlap_score = None
         if time_range and time_bonus_weight > 0 and output:
             try:
-                from time_parser import time_overlap_score
-                q_start, q_end = time_range
-                for r in output:
-                    filed_at = r["metadata"].get("filed_at", "")
-                    bonus = time_overlap_score(filed_at, q_start, q_end)
-                    r["similarity"] = r["similarity"] * (1 - time_bonus_weight) + bonus * time_bonus_weight
-                output.sort(key=lambda x: -x["similarity"])
-            except Exception:
-                logger.debug("time-aware weighting failed", exc_info=True)
+                from time_parser import time_overlap_score as _time_overlap_score
+                logger.info("Time-aware weighting enabled")
+            except ImportError:
+                logger.warning("time_parser not installed - time-aware weighting disabled. Install with: pip install time_parser")
+            except Exception as e:
+                logger.warning(f"Time parser failed to load: {e}")
+
+            if _time_overlap_score:
+                try:
+                    q_start, q_end = time_range
+                    for r in output:
+                        filed_at = r["metadata"].get("filed_at", "")
+                        bonus = _time_overlap_score(filed_at, q_start, q_end)
+                        r["similarity"] = r["similarity"] * (1 - time_bonus_weight) + bonus * time_bonus_weight
+                    output.sort(key=lambda x: -x["similarity"])
+                except Exception as e:
+                    logger.debug(f"Time-aware weighting failed: {e}")
 
         # 跨翼多样性重排
         if cross_wing_diversity and not wing and output:
@@ -485,17 +503,26 @@ class Layer3:
         if not hits:
             return {"direct_hits": [], "bundles": []}
 
+        _BundleScorer = None
         try:
-            from bundle_scorer import BundleScorer
-            from mempalace_evolve.core.knowledge_graph import KnowledgeGraph
-            kg = KnowledgeGraph()
-            scorer = BundleScorer(kg=kg, palace_path=self.palace_path)
-            hit_ids = [h["id"] for h in hits]
-            hit_texts = [h["text"] for h in hits]
-            bundles = scorer.find_bundles(hit_ids, hit_texts, max_hops=max_hops)
-        except Exception:
-            logger.debug("bundle scoring failed", exc_info=True)
-            bundles = []
+            from bundle_scorer import BundleScorer as _BundleScorer
+            logger.info("Bundle scoring enabled")
+        except ImportError:
+            logger.warning("bundle_scorer not installed - bundle scoring disabled. Install with: pip install bundle_scorer")
+        except Exception as e:
+            logger.warning(f"Bundle scorer failed to load: {e}")
+
+        bundles = []
+        if _BundleScorer:
+            try:
+                from mempalace_evolve.core.knowledge_graph import KnowledgeGraph
+                kg = KnowledgeGraph()
+                scorer = _BundleScorer(kg=kg, palace_path=self.palace_path)
+                hit_ids = [h["id"] for h in hits]
+                hit_texts = [h["text"] for h in hits]
+                bundles = scorer.find_bundles(hit_ids, hit_texts, max_hops=max_hops)
+            except Exception as e:
+                logger.warning(f"Bundle scoring failed: {e}")
 
         return {
             "direct_hits": hits,
