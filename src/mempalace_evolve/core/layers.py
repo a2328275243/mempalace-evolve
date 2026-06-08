@@ -308,10 +308,10 @@ class Layer3:
         # 共指消解：将查询中的代词替换为实际实体名
         _resolve_query = None
         try:
-            from coref_resolver import resolve_query as _resolve_query
+            from mempalace_evolve.core.optional.coref_resolver import resolve_query as _resolve_query
             logger.info("Coreference resolution enabled")
         except ImportError:
-            logger.warning("coref_resolver not installed - coreference resolution disabled. Install with: pip install coref_resolver")
+            logger.warning("coref_resolver not installed - coreference resolution disabled.")
         except Exception as e:
             logger.warning(f"Coreference resolution failed to load: {e}")
 
@@ -433,10 +433,10 @@ class Layer3:
         _time_overlap_score = None
         if time_range and time_bonus_weight > 0 and output:
             try:
-                from time_parser import time_overlap_score as _time_overlap_score
+                from mempalace_evolve.core.optional.time_parser import time_overlap_score as _time_overlap_score
                 logger.info("Time-aware weighting enabled")
             except ImportError:
-                logger.warning("time_parser not installed - time-aware weighting disabled. Install with: pip install time_parser")
+                logger.warning("time_parser not installed - time-aware weighting disabled.")
             except Exception as e:
                 logger.warning(f"Time parser failed to load: {e}")
 
@@ -505,10 +505,10 @@ class Layer3:
 
         _BundleScorer = None
         try:
-            from bundle_scorer import BundleScorer as _BundleScorer
+            from mempalace_evolve.core.optional.bundle_scorer import BundleScorer as _BundleScorer
             logger.info("Bundle scoring enabled")
         except ImportError:
-            logger.warning("bundle_scorer not installed - bundle scoring disabled. Install with: pip install bundle_scorer")
+            logger.warning("bundle_scorer not installed - bundle scoring disabled.")
         except Exception as e:
             logger.warning(f"Bundle scorer failed to load: {e}")
 
