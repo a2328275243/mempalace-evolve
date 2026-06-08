@@ -22,6 +22,17 @@
 
 ---
 
+# DreamSeed AI Agent OS + MemPalace Evo
+
+**一个仓库，双重复合能力** —— 既是**地表最强的 AI 长期自进化记忆系统**，又是**开箱即用的自制智能体操作系统**。
+
+| 核心组件 | 功能描述 |
+|----------|----------|
+| **🧠 自进化记忆** (`src/mempalace_evolve/`) | 分层存储、向量+知识图谱混合检索、自动去重合并、基于艾宾浩斯遗忘曲线的智能淘汰 |
+| **🤖 智能体终端** (`dreamseed-layer/`) | 开箱即用的 CLI 终端，内置模型管理器，支持零密钥泄露配置 |
+
+---
+
 # mempalace-evolve
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
@@ -861,6 +872,124 @@ src/mempalace_evolve/
     ├── langchain_adapter.py # LangChain Tools
     └── rest_api.py         # HTTP REST API（支持 API key 认证）
 ```
+
+---
+
+# 🎯 DreamSeed 智能体操作系统 - 快速上手指南
+
+## 为什么选择 DreamSeed？
+
+这是一个**开箱即用的 AI 开发智能体系统**，专为追求效率与安全的开发者设计：
+
+| 特性 | 说明 |
+|------|------|
+| **🚀 一键启动** | 下载后只需两条命令，直接进入智能体终端 |
+| **🔐 零密钥泄露** | 所有 API Key 本地加密存储，永不上传 |
+| **🧠 双重记忆** | 内置 mempalace-evolve 记忆系统，跨会话自动学习 |
+| **🎛️ 模型管理** | 告别配置文件手写，通过 Web UI 统一管理所有模型 |
+| **🔌 MCP 集成** | 开箱即用的 Model Context Protocol 支持 |
+
+---
+
+## 🚀 3 分钟快速启动
+
+### 第一步：安装环境
+
+```powershell
+# 克隆仓库后，进入目录
+cd mempalace-evolve
+
+# 安装 Python 依赖
+powershell -ExecutionPolicy Bypass -File dreamseed-layer\scripts\install-python-deps.ps1
+```
+
+### 第二步：配置模型（可选但推荐）
+
+```bash
+# 打开模型管理器 Web UI（可选）
+dreamseed manager
+```
+在浏览器中打开 `http://127.0.0.1:8765`，添加你的模型：
+- 显示名称：如 "GLM-4"
+- API 地址：如 `https://open.bigmodel.cn/api/paas/v4`
+- API Key：填写你的密钥（本地加密存储）
+- 模型名称：如 `glm-4`
+
+### 第三步：启动智能体终端
+
+```bash
+# 在任意项目目录运行
+dreamseed
+```
+
+然后就可以直接和 AI 对话，让它帮你：
+- 写代码、修 Bug
+- 分析项目结构
+- 执行终端命令
+- 自动记住每次调试的经验教训
+
+---
+
+## 📖 使用场景
+
+### 场景 1：只想用记忆系统
+
+不需要 DreamSeed 终端，直接用 Python SDK：
+
+```python
+from mempalace_evolve import MemPalace
+
+palace = MemPalace("./my-memory", wing="my_project")
+palace.remember("数据库用 PostgreSQL", room="decisions")
+results = palace.recall("用什么数据库")
+```
+
+### 场景 2：只想用智能体终端
+
+不需要记忆系统，直接运行：
+
+```bash
+dreamseed "帮我写一个快速排序算法"
+```
+
+### 场景 3：两者结合（推荐）
+
+智能体会自动使用记忆系统，每次对话后自动保存重要信息到 mempalace：
+
+```bash
+# 启动后，AI 会自动记住你的项目经验
+dreamseed "这个项目的数据库连接怎么配的？"
+# AI 会先搜索记忆，然后回答
+```
+
+---
+
+## 🛠️ CLI 命令参考
+
+| 命令 | 功能 |
+|------|------|
+| `dreamseed` | 启动智能体终端 |
+| `dreamseed manager` | 打开模型管理器 Web UI |
+| `dreamseed doctor` | 检查环境状态 |
+| `mempalace setup` | 配置 MCP 记忆（用于 Claude Code/Cursor） |
+| `mempalace doctor` | 检查记忆系统安装 |
+| `mempalace evolve` | 触发记忆自进化 |
+
+---
+
+## 🔒 安全说明
+
+本项目已配置完善的 `.gitignore`，以下文件**不会被提交**：
+
+- `.dreamseed/` - 本地配置
+- `.dreamseed-memory/` - 记忆数据库
+- `providers.local.json` - API 密钥配置
+- `memory-candidates/` - 待审查记忆
+- `legacy-history/` - 导入的历史记录
+
+所有敏感数据仅存放在本地，发布到 GitHub 时自动排除。
+
+---
 
 ## License
 

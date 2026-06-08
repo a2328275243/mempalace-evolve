@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "mempalace": {
+      "type": "stdio",
+      "command": "python",
+      "args": [
+        "-m",
+        "mempalace_evolve.adapters.mcp_server"
+      ],
+      "env": {
+        "PYTHONIOENCODING": "utf-8",
+        "MEMPALACE_PATH": ".dreamseed-memory",
+        "MEMPALACE_WING": "dreamseed"
+      }
+    }
+  }
+}

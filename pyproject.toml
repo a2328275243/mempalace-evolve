@@ -41,9 +41,11 @@ Issues = "https://github.com/a2328275243/mempalace-evolve/issues"
 mempalace = "mempalace_evolve.cli:main"
 mempalace-server = "mempalace_evolve.adapters.rest_api:serve"
 mempalace-mcp = "mempalace_evolve.adapters.mcp_server:main"
+dreamseed = "dreamseed_layer.cli:main"
+dreamseed-manager = "dreamseed_layer.manager_ui:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/mempalace_evolve"]
+packages = ["src/mempalace_evolve", "dreamseed_layer"]
 
 [tool.ruff]
 target-version = "py310"

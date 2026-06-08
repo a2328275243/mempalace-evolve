@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DreamSeed Model Manager</title>
+    <link rel="stylesheet" href="/app.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="topbar" aria-label="Model manager toolbar">
+        <div class="brand-lockup">
+          <div class="brand-mark" aria-hidden="true">DS</div>
+          <div>
+            <p class="kicker">DreamSeed Code</p>
+            <h1>Model Manager</h1>
+          </div>
+        </div>
+        <div class="toolbar-actions">
+          <button id="refreshBtn" class="button secondary" type="button">Refresh</button>
+          <button id="newBtn" class="button primary" type="button">New Model</button>
+        </div>
+      </section>
+
+      <section class="status-grid" aria-label="Manager status">
+        <div class="status-tile">
+          <span class="tile-label">Active</span>
+          <strong id="currentProvider">None</strong>
+        </div>
+        <div class="status-tile">
+          <span class="tile-label">Models</span>
+          <strong id="modelCount">0</strong>
+        </div>
+        <div class="status-tile">
+          <span class="tile-label">Auth</span>
+          <strong id="authState">Local token</strong>
+        </div>
+        <div class="status-tile wide">
+          <span class="tile-label">Config</span>
+          <strong id="configPath">Loading provider config...</strong>
+        </div>
+      </section>
+
+      <section class="layout">
+        <aside class="sidebar" aria-label="Saved model endpoints">
+          <div class="sidebar-head">
+            <span>Models</span>
+            <span id="listCount" class="counter">0</span>
+          </div>
+          <div class="search-wrap">
+            <input id="searchInput" spellcheck="false" placeholder="Search models" />
+          </div>
+          <div id="providerList" class="provider-list"></div>
+        </aside>
+
+        <section class="editor" aria-label="Model endpoint editor">
+          <form id="providerForm" autocomplete="off">
+            <div class="form-head">
+              <div>
+                <h2 id="formTitle">New Model</h2>
+                <p id="activeState" class="state-pill">Not active</p>
+              </div>
+              <div class="form-actions">
+                <button id="activateBtn" class="button secondary" type="button">Set Active</button>
+                <button id="deleteBtn" class="button danger" type="button">Delete</button>
+              </div>
+            </div>
+
+            <div id="notice" class="notice" role="status">Ready.</div>
+
+            <div class="quick-row" aria-label="Endpoint templates">
+              <button class="template-chip" type="button" data-template="openai">OpenAI compatible</button>
+              <button class="template-chip" type="button" data-template="glm">GLM style</button>
+              <button class="template-chip" type="button" data-template="custom">Custom</button>
+            </div>
+
+            <div class="grid">
+              <label>
+                Name
+                <input id="nameInput" name="name" required spellcheck="false" placeholder="glm" />
+              </label>
+              <label>
+                Model
+                <input id="modelInput" name="model" required spellcheck="false" placeholder="GLM-5.1" />
+              </label>
+            </div>
+
+            <label>
+              Base URL
+              <input id="baseUrlInput" name="baseUrl" required spellcheck="false" placeholder="https://api.example.com" inputmode="url" />
+            </label>
+
+            <div class="grid">
+              <label>
+                API Key
+                <input id="apiKeyInput" name="apiKey" type="password" spellcheck="false" placeholder="Leave blank to keep existing key" />
+              </label>
+              <label>
+                API Key Env
+                <input id="apiKeyEnvInput" name="apiKeyEnv" spellcheck="false" placeholder="Optional, e.g. DREAMSEED_API_KEY" />
+              </label>
+            </div>
+
+            <details class="advanced">
+              <summary>Advanced</summary>
+              <div class="advanced-grid">
+                <label>
+                  Chat Path
+                  <input id="chatPathInput" name="chatCompletionsPath" spellcheck="false" value="/v1/chat/completions" />
+                </label>
+                <label>
+                  Timeout
+                  <input id="timeoutInput" name="timeoutMs" type="number" min="1000" step="1000" value="120000" />
+                </label>
+                <label class="full-row">
+                  System Prefix
+                  <textarea id="systemPrefixInput" name="systemPrefix" rows="3">Always place the final answer in visible message content.</textarea>
+                </label>
+              </div>
+            </details>
+
+            <div class="test-row">
+              <label>
+                Test Prompt
+                <input id="testPromptInput" spellcheck="false" value="Reply exactly: ok" />
+              </label>
+              <label class="checkline">
+                <input id="activateAfterSaveInput" type="checkbox" checked />
+                Make active
+              </label>
+              <button id="discoverBtn" class="button secondary" type="button">Discover</button>
+              <button id="testBtn" class="button secondary" type="button">Test</button>
+              <button id="saveBtn" class="button primary" type="submit">Save</button>
+            </div>
+          </form>
+
+          <section class="result-panel" aria-label="Result">
+            <div id="resultTitle" class="result-title">Ready</div>
+            <pre id="resultOutput">Select a model or create one.</pre>
+          </section>
+        </section>
+      </section>
+    </main>
+
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>

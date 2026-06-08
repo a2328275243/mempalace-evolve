@@ -28,3 +28,16 @@ htmlcov/
 .DS_Store
 Thumbs.db
 .claude/
+# =========================================================================
+# DreamSeed & MemPalace 安全防泄露白名单/黑名单
+# =========================================================================
+.dreamseed/
+.dreamseed-memory/
+memory-candidates/
+self-evolve-candidates/
+self-evolve-backups/
+legacy-history/
+providers.local.json
+*.log
+*.database
+LOCAL-KIT.md
