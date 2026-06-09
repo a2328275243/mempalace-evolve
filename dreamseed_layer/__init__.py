@@ -5,9 +5,10 @@ import sys
 import os
 from pathlib import Path
 
-# 将 dreamseed-layer 添加到路径
+# 修复路径：向上两级到达项目根目录
 SCRIPT_DIR = Path(__file__).parent
-DREAMSEED_LAYER = SCRIPT_DIR / "dreamseed-layer"
+PROJECT_ROOT = SCRIPT_DIR.parent
+DREAMSEED_LAYER = PROJECT_ROOT / "dreamseed-layer"
 
 def main():
     """主入口：根据参数调用对应功能"""
@@ -24,18 +25,26 @@ def main():
     command = sys.argv[1]
 
     if command == "manager":
-        # 启动模型管理器 UI
-        try:
-            from dreamseed_layer.manager_ui import start_manager
-            start_manager()
-        except ImportError as e:
-            print(f"错误: 无法启动模型管理器 - {e}")
-            print("请确保已正确安装 dreamseed-layer 依赖")
+        # 启动模型管理器 UI - 使用 package.json 中的脚本
+        print("🌐 启动 DreamSeed 模型管理器...")
+        print("   浏览器将自动打开 http://127.0.0.1:17941")
+        print("   按 Ctrl+C 停止服务\n")
+        manager_script = DREAMSEED_LAYER / "scripts" / "provider_manager.mjs"
+        if manager_script.exists():
+            os.system(f'cd "{DREAMSEED_LAYER}" && npm run manager')
+        else:
+            print(f"错误: 找不到管理器脚本 {manager_script}")
             sys.exit(1)
     elif command == "doctor":
         # 环境检查
         print("🔍 检查 DreamSeed 环境...")
-        os.system(f'powershell -File "{DREAMSEED_LAYER}/scripts/dreamseed-doctor.ps1"')
+        # 使用 dreamseed-memory-bridge 进行诊断
+        bridge_script = DREAMSEED_LAYER / "scripts" / "dreamseed_memory_bridge.py"
+        if bridge_script.exists():
+            os.system(f'python "{bridge_script}" doctor')
+        else:
+            print(f"错误: 找不到诊断脚本 {bridge_script}")
+            sys.exit(1)
     else:
         # 启动智能体终端
         print("🚀 启动 DreamSeed 智能体...")

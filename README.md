@@ -906,10 +906,10 @@ powershell -ExecutionPolicy Bypass -File dreamseed-layer\scripts\install-python-
 ### 第二步：配置模型（可选但推荐）
 
 ```bash
-# 打开模型管理器 Web UI（可选）
+# 打开模型管理器 Web UI
 dreamseed manager
 ```
-在浏览器中打开 `http://127.0.0.1:8765`，添加你的模型：
+命令运行后会自动打开浏览器访问 `http://127.0.0.1:17941`，在模型管理器中添加你的模型：
 - 显示名称：如 "GLM-4"
 - API 地址：如 `https://open.bigmodel.cn/api/paas/v4`
 - API Key：填写你的密钥（本地加密存储）
