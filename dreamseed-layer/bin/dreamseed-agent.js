@@ -11,7 +11,7 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const root = path.resolve(__dirname, '..')
 
-const args = process.argv.slice(2)
+let args = normalizeKernelArgs(process.argv.slice(2))
 const env = { ...process.env }
 
 const currentProject = process.cwd()
@@ -32,23 +32,30 @@ const settingsFile = path.join(dreamseedDir, 'settings.json')
 const promptFile = path.join(root, 'docs', 'dreamseed-system-prompt.md')
 const providerBridgeScript = path.join(root, 'scripts', 'provider_bridge.mjs')
 const providerManagerScript = path.join(root, 'scripts', 'provider_manager.mjs')
+const desktopScript = path.join(root, 'scripts', 'dreamseed_desktop.mjs')
 const importHistoryScript = path.join(root, 'scripts', 'import_claude_history.py')
 const selfEvolveScript = path.join(root, 'scripts', 'dreamseed_self_evolve.py')
 const contextDoctorScript = path.join(root, 'scripts', 'dreamseed_context_doctor.py')
+const compactCacheScript = path.join(root, 'scripts', 'dreamseed_compact_cache.py')
 const usageScript = path.join(root, 'scripts', 'dreamseed_usage.py')
 const mcpDoctorScript = path.join(root, 'scripts', 'mcp_doctor.py')
 const hookDoctorScript = path.join(root, 'scripts', 'hook_doctor.py')
+const kernelDoctorScript = path.join(root, 'scripts', 'kernel_doctor.py')
 const memoryCliScript = path.join(root, 'scripts', 'dreamseed_memory_cli.py')
 const evalScript = path.join(root, 'scripts', 'dreamseed_eval.py')
 const providerToolsScript = path.join(root, 'scripts', 'provider_tools.py')
 const approvalGateScript = path.join(root, 'scripts', 'approval_gate.py')
-const liteKernelScript = path.join(root, 'bin', 'dreamseed-lite-kernel.js')
 const providerConfig = resolveProviderConfig(env, currentProject, root)
 const providerPort = Number(env.DREAMSEED_PROVIDER_PORT || 17891)
 const providerConfigId = providerConfig ? readProviderConfigId(providerConfig, env.DREAMSEED_PROVIDER) : null
 
 if (isManagerCommand(args)) {
   await runManagerCommand(args.slice(1), env)
+  process.exit(0)
+}
+
+if (isDesktopCommand(args)) {
+  await runDesktopCommand(args.slice(1), env)
   process.exit(0)
 }
 
@@ -87,6 +94,11 @@ if (isDoctorCommand(args)) {
   process.exit(0)
 }
 
+if (isCompactCacheCommand(args)) {
+  await runCompactCacheCommand(args.slice(1), env)
+  process.exit(0)
+}
+
 if (isUsageCommand(args)) {
   await runUsageCommand(args.slice(1), env)
   process.exit(0)
@@ -107,6 +119,7 @@ env.DREAMSEED_CONFIG_DIR = env.DREAMSEED_CONFIG_DIR || dreamseedDir
 env.DREAMSEED_MEMORY_DIR = memoryDir
 env.DREAMSEED_OUTPUT_COMPRESS = env.DREAMSEED_OUTPUT_COMPRESS || 'off'
 env.DREAMSEED_OUTPUT_COMPRESS_LIMIT = env.DREAMSEED_OUTPUT_COMPRESS_LIMIT || '12000'
+env.ENABLE_CLAUDE_CODE_SM_COMPACT = env.ENABLE_CLAUDE_CODE_SM_COMPACT || '1'
 env.DREAMSEED_PYTHON_SITE = pythonSite
 if (mempalaceSrc) {
   env.DREAMSEED_MEMPALACE_SRC = mempalaceSrc
@@ -177,15 +190,16 @@ if (existsSync(promptFile) && !hasFlag(args, '--append-system-prompt') && !hasFl
 let command
 let commandArgs
 
-if (env.DREAMSEED_KERNEL_JS) {
+const kernelSelection = selectKernel({
+  env,
+})
+
+if (kernelSelection.kind === 'js') {
   command = process.execPath
-  commandArgs = [env.DREAMSEED_KERNEL_JS, ...injected, ...args]
-} else if (env.DREAMSEED_KERNEL_CLI) {
-  command = env.DREAMSEED_KERNEL_CLI
+  commandArgs = [kernelSelection.value, ...injected, ...args]
+} else if (kernelSelection.kind === 'cli') {
+  command = kernelSelection.value
   commandArgs = [...injected, ...args]
-} else if (existsSync(liteKernelScript)) {
-  command = process.execPath
-  commandArgs = [liteKernelScript, ...injected, ...args]
 } else {
   command = 'dreamseed-kernel'
   commandArgs = [...injected, ...args]
@@ -199,8 +213,8 @@ const child = spawn(command, commandArgs, {
 })
 
 child.on('error', error => {
-  console.error(`[dreamseed] failed to start compatible kernel: ${error.message}`)
-  console.error('[dreamseed] set DREAMSEED_KERNEL_JS to a local JavaScript kernel or DREAMSEED_KERNEL_CLI to an installed compatible command.')
+  console.error(`[dreamseed] failed to start ${kernelSelection.label}: ${error.message}`)
+  console.error('[dreamseed] configure DREAMSEED_COMPAT_KERNEL_JS or DREAMSEED_KERNEL_CLI to point at a compatible runtime.')
   process.exit(1)
 })
 
@@ -236,6 +250,10 @@ function isManagerCommand(argv) {
   return argv[0] === 'manager' || argv[0] === 'models-ui' || argv[0] === 'model-manager'
 }
 
+function isDesktopCommand(argv) {
+  return argv[0] === 'desktop' || argv[0] === 'app' || argv[0] === 'studio'
+}
+
 function isHistoryCommand(argv) {
   return argv[0] === 'history' || argv[0] === 'legacy-history'
 }
@@ -248,12 +266,44 @@ function isDoctorCommand(argv) {
   return argv[0] === 'doctor' || argv[0] === 'doctors'
 }
 
+function isCompactCacheCommand(argv) {
+  return argv[0] === 'compact-cache' || argv[0] === 'compactcache'
+}
+
 function isUsageCommand(argv) {
   return argv[0] === 'usage' || argv[0] === 'use-summary'
 }
 
 function isApprovalCommand(argv) {
   return argv[0] === 'approval' || argv[0] === 'approvals' || argv[0] === 'permission' || argv[0] === 'permissions'
+}
+
+function normalizeKernelArgs(argv) {
+  const command = argv[0]
+  if (command === 'fast' || command === 'lite') {
+    console.error('[dreamseed] fast/lite kernel has been removed. Run `dreamseed` directly to use the compatible runtime.')
+    process.exit(2)
+  }
+  if (command === 'compat' || command === 'compatible') {
+    return argv.slice(1)
+  }
+  return argv
+}
+
+function selectKernel({ env: runtimeEnv }) {
+  const compatJs = runtimeEnv.DREAMSEED_COMPAT_KERNEL_JS || runtimeEnv.DREAMSEED_KERNEL_JS || ''
+  const compatCli = runtimeEnv.DREAMSEED_COMPAT_KERNEL_CLI || runtimeEnv.DREAMSEED_KERNEL_CLI || ''
+  return selectCompatKernel(compatJs, compatCli)
+}
+
+function selectCompatKernel(compatJs, compatCli) {
+  if (compatJs) {
+    return { kind: 'js', value: compatJs, label: 'DreamSeed compatible kernel' }
+  }
+  if (compatCli) {
+    return { kind: 'cli', value: compatCli, label: 'DreamSeed compatible kernel' }
+  }
+  throw new Error('[dreamseed] needs DREAMSEED_COMPAT_KERNEL_JS, DREAMSEED_KERNEL_JS, DREAMSEED_COMPAT_KERNEL_CLI, or DREAMSEED_KERNEL_CLI.')
 }
 
 async function runDoctorCommand(argv, runtimeEnv) {
@@ -273,14 +323,23 @@ async function runDoctorCommand(argv, runtimeEnv) {
     await runPythonHelper(hookDoctorScript, commandArgs, runtimeEnv, 'hook doctor')
     return
   }
+  if (command === 'kernel' || command === 'kernels' || command === 'runtime') {
+    await runPythonHelper(kernelDoctorScript, rest, runtimeEnv, 'kernel doctor')
+    return
+  }
   console.error('[dreamseed] unknown doctor command: ' + command)
-  console.error('Try: dreamseed doctor context | dreamseed doctor mcp | dreamseed doctor hooks')
+  console.error('Try: dreamseed doctor context | dreamseed doctor mcp | dreamseed doctor hooks | dreamseed doctor kernel')
   process.exit(2)
 }
 
 async function runUsageCommand(argv, runtimeEnv) {
   const commandArgs = argv.length === 0 || argv[0].startsWith('--') ? ['summary', ...argv] : argv
   await runPythonHelper(usageScript, commandArgs, runtimeEnv, 'usage summary')
+}
+
+async function runCompactCacheCommand(argv, runtimeEnv) {
+  const commandArgs = argv.length === 0 || argv[0].startsWith('--') ? ['status', ...argv] : argv
+  await runPythonHelper(compactCacheScript, commandArgs, runtimeEnv, 'compact cache')
 }
 
 async function runApprovalCommand(argv, runtimeEnv) {
@@ -417,6 +476,30 @@ async function runManagerCommand(argv, runtimeEnv) {
   })
 }
 
+async function runDesktopCommand(argv, runtimeEnv) {
+  if (!existsSync(desktopScript)) {
+    throw new Error(`[dreamseed] desktop script missing: ${desktopScript}`)
+  }
+
+  const child = spawn(process.execPath, [desktopScript, ...argv], {
+    stdio: 'inherit',
+    env: runtimeEnv,
+    cwd: root,
+    shell: false,
+  })
+
+  await new Promise((resolve, reject) => {
+    child.on('error', reject)
+    child.on('exit', code => {
+      if (code && code !== 0) {
+        reject(new Error(`[dreamseed] desktop exited with code ${code}`))
+      } else {
+        resolve()
+      }
+    })
+  })
+}
+
 async function runEvolveCommand(argv, runtimeEnv) {
   if (!existsSync(selfEvolveScript)) {
     throw new Error(`[dreamseed] self-evolve script missing: ${selfEvolveScript}`)
@@ -507,7 +590,7 @@ async function runProviderCommand(argv, runtimeEnv, projectDir, repoRoot) {
     return
   }
 
-  if (command === 'templates' || command === 'template' || command === 'export-redacted' || command === 'import-redacted' || command === 'latency' || command === 'health' || command === 'discover') {
+  if (command === 'templates' || command === 'template' || command === 'export-redacted' || command === 'import-redacted' || command === 'latency' || command === 'health' || command === 'discover' || command === 'tools-test' || command === 'tool-test' || command === 'diagnose') {
     await runPythonHelper(providerToolsScript, [command, ...optionArgs], runtimeEnv, 'provider ' + command)
     return
   }
@@ -531,11 +614,13 @@ function printProviderHelp() {
   console.log('  dreamseed provider export-redacted')
   console.log('  dreamseed provider import-redacted --from FILE --yes')
   console.log('  dreamseed provider discover')
+  console.log('  dreamseed provider tools-test [--all] [--save]')
+  console.log('  dreamseed provider diagnose [--all]')
   console.log('  dreamseed provider path\n')
   console.log('Setup stores a private providers.local.json outside the publish layer.')
   console.log('The default upstream type is OpenAI-compatible /v1/chat/completions.')
   console.log('Add or update a model with setup --name, then switch with use NAME.')
-  console.log('Secrets are never printed by list, status, or test output.')
+  console.log('Secrets are never printed by list, status, test, diagnose, or tools-test output.')
 }
 
 async function setupProvider(options, runtimeEnv, projectDir) {
@@ -587,7 +672,7 @@ async function setupProvider(options, runtimeEnv, projectDir) {
     systemPrefix:
       optionValue(options, ['system-prefix', 'systemPrefix']) ||
       existingProvider.systemPrefix ||
-      'Always place the final answer in visible message content.',
+      defaultProviderSystemPrefix(providerName, model),
     timeoutMs,
   }
 
@@ -618,6 +703,20 @@ async function setupProvider(options, runtimeEnv, projectDir) {
   console.log('Base URL: ' + displayProviderUrl(baseUrl))
   console.log('Model: ' + model)
   console.log('Auth: ' + describeProviderAuth(provider, runtimeEnv))
+}
+
+function defaultProviderSystemPrefix(name, model) {
+  const label = `${name} ${model}`.toLowerCase()
+  if (/(gemini|gemma)/.test(label)) {
+    return 'Use OpenAI-compatible tool_calls exactly when tools are provided; keep final user-facing text in message.content.'
+  }
+  if (/(deepseek|coder)/.test(label)) {
+    return 'When a tool is needed, emit valid tool_calls JSON only through the OpenAI tools field; do not describe tool calls in prose.'
+  }
+  if (/(glm|zhipu|bigmodel)/.test(label)) {
+    return 'Prefer native OpenAI-compatible tool_calls and keep concise visible final answers.'
+  }
+  return 'Always place the final answer in visible message content. Use OpenAI-compatible tool_calls when tools are available.'
 }
 
 
@@ -656,7 +755,9 @@ function printProviderList(options, runtimeEnv, projectDir, repoRoot) {
         '  url=' +
         displayProviderUrl(provider.baseUrl) +
         '  auth=' +
-        describeProviderAuth(provider, runtimeEnv),
+        describeProviderAuth(provider, runtimeEnv) +
+        '  capability=' +
+        describeProviderCapability(name, provider),
     )
   }
 }
@@ -727,6 +828,7 @@ function printProviderStatus(options, runtimeEnv, projectDir, repoRoot) {
   console.log('Base URL: ' + displayProviderUrl(provider.baseUrl))
   console.log('Model: ' + (provider.model || '<missing>'))
   console.log('Auth: ' + describeProviderAuth(provider, runtimeEnv))
+  console.log('Capability: ' + describeProviderCapability(providerName, provider))
 }
 
 async function testProvider(options, runtimeEnv, projectDir, repoRoot) {
@@ -900,6 +1002,8 @@ function resolveProviderWritePath(options, runtimeEnv, projectDir) {
   const explicit = optionValue(options, ['path', 'config'])
   if (explicit) return path.resolve(explicit)
   if (options.project) return path.join(projectDir, '.dreamseed', 'providers.local.json')
+  const localConfig = preferredLocalProviderConfigPath(runtimeEnv, root)
+  if (localConfig) return localConfig
   const appDataDir = runtimeEnv.APPDATA
   if (appDataDir) return path.join(appDataDir, 'DreamSeed', 'providers.local.json')
   const homeDir = runtimeEnv.DREAMSEED_HOME || runtimeEnv.HOME || runtimeEnv.USERPROFILE
@@ -943,6 +1047,25 @@ function displayProviderUrl(value) {
   } catch {
     return '<invalid-url>'
   }
+}
+
+function describeProviderCapability(name, provider) {
+  const modality = inferProviderModality(name, provider)
+  if (provider.agentCapable === false) return `agent=no modality=${modality}`
+  if (provider.toolSupport) {
+    const agent = provider.agentCapable === false ? 'no' : 'yes'
+    return `agent=${agent} modality=${modality} tools=${provider.toolSupport}`
+  }
+  if (modality !== 'text') return `agent=probably-no modality=${modality}`
+  return 'agent=unknown modality=text run provider tools-test'
+}
+
+function inferProviderModality(name, provider) {
+  if (provider.modality || provider.capability) return String(provider.modality || provider.capability)
+  const label = `${name} ${provider.model || ''}`
+  if (/(image|img|dall[-_ ]?e|flux|sdxl|stable-diffusion|midjourney)/i.test(label)) return 'image'
+  if (/(embedding|rerank|tts|audio|whisper)/i.test(label)) return 'non-agent'
+  return 'text'
 }
 
 function describeProviderAuth(provider, runtimeEnv) {
@@ -1130,9 +1253,12 @@ Usage:
 
 Runtime:
   DREAMSEED_KERNEL_JS   Path to a compatible JavaScript kernel.
+  DREAMSEED_COMPAT_KERNEL_JS
+                        Preferred path to the local compatible JavaScript
+                        kernel.
   DREAMSEED_KERNEL_CLI  Compatible command to execute when no JS kernel is set.
-                        If neither is set, DreamSeed uses its bundled
-                        source-only lite kernel.
+  DREAMSEED_COMPAT_KERNEL_CLI
+                        Preferred compatible command when no JS kernel is set.
   DREAMSEED_PROVIDER_CONFIG
                         Optional private provider config. When present,
                         DreamSeed starts scripts/provider_bridge.mjs and exposes
@@ -1143,6 +1269,10 @@ Provider shortcuts:
                         Open the local DreamSeed Model Manager in a browser.
                         Use it to add, edit, delete, test, and switch models
                         before entering the agent.
+  dreamseed desktop
+                        Open DreamSeed Desktop as a native Electron app.
+                        Use it to manage projects, switch models, run task
+                        modes, open terminals, and inspect system health.
   dreamseed provider setup
                         Configure an OpenAI-compatible model endpoint by entering
                         only a base URL, API key, and model name.
@@ -1166,6 +1296,10 @@ Provider shortcuts:
                         Import a redacted provider template into private config.
   dreamseed provider discover
                         Discover model names from the active provider when supported.
+  dreamseed provider tools-test [--all] [--save]
+                        Verify OpenAI tool_calls support without printing secrets.
+  dreamseed provider diagnose [--all]
+                        Classify model/tool compatibility and prompt adapter hints.
   dreamseed mcp list
                         List configured MCP servers and registry metadata.
   dreamseed mcp candidates
@@ -1217,11 +1351,16 @@ Provider shortcuts:
   dreamseed doctor context
                         Inspect prompt, skill, agent, MCP, memory, and resume
                         context size without changing runtime behavior.
+  dreamseed compact-cache build|status|show
+                        Build or inspect local project summary cache for faster
+                        manual compact handoffs.
   dreamseed doctor mcp
                         Audit MCP registry and configured MCP servers.
   dreamseed doctor hooks
                         Audit hook commands, timeouts, scripts, and memory
                         promotion safety.
+  dreamseed doctor kernel
+                        Inspect compatible runtime routing and known slow paths.
   dreamseed usage summary
                         Summarize provider, history, and legacy usage without
                         printing secrets.
@@ -1234,7 +1373,7 @@ Provider shortcuts:
   dreamseed approval check --tool Bash --command "git status --short"
                         Classify a tool request as allow, ask, or deny.
   /resume
-                        Inside the interactive lite kernel, list imported
+                        Inside the interactive runtime, list imported
                         legacy sessions and load the selected session as
                         current conversation context only.
 
@@ -1251,14 +1390,32 @@ DreamSeed automatically wires:
 function resolveProviderConfig(runtimeEnv, projectDir, repoRoot) {
   const homeDir = runtimeEnv.DREAMSEED_HOME || runtimeEnv.HOME || runtimeEnv.USERPROFILE
   const appDataDir = runtimeEnv.APPDATA
+  const localConfig = preferredLocalProviderConfigPath(runtimeEnv, repoRoot)
   const candidates = [
     runtimeEnv.DREAMSEED_PROVIDER_CONFIG,
     path.join(projectDir, '.dreamseed', 'providers.local.json'),
+    localConfig,
     homeDir ? path.join(homeDir, '.dreamseed', 'providers.local.json') : null,
     appDataDir ? path.join(appDataDir, 'DreamSeed', 'providers.local.json') : null,
     path.join(repoRoot, 'config', 'providers.local.json'),
   ].filter(Boolean)
   return candidates.find(candidate => existsSync(candidate))
+}
+
+function preferredLocalProviderConfigPath(runtimeEnv, repoRoot) {
+  const candidates = [
+    runtimeEnv.DREAMSEED_CONFIG_DIR ? path.join(runtimeEnv.DREAMSEED_CONFIG_DIR, 'providers.local.json') : null,
+    runtimeEnv.DREAMSEED_LOCAL_ROOT ? path.join(runtimeEnv.DREAMSEED_LOCAL_ROOT, 'config', 'providers.local.json') : null,
+    inferLocalRootFromRepo(repoRoot) ? path.join(inferLocalRootFromRepo(repoRoot), 'config', 'providers.local.json') : null,
+  ].filter(Boolean)
+  return candidates.find(candidate => candidate && (existsSync(candidate) || existsSync(path.dirname(candidate)))) || candidates[0] || ''
+}
+
+function inferLocalRootFromRepo(repoRoot) {
+  const normalized = path.normalize(repoRoot || '')
+  const marker = `${path.sep}app${path.sep}`
+  const index = normalized.toLowerCase().lastIndexOf(marker)
+  return index > 0 ? normalized.slice(0, index) : ''
 }
 
 async function maybeStartProviderBridge({ configPath, scriptPath, port, expectedConfigId, env: runtimeEnv }) {

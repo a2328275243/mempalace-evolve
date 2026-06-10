@@ -1,0 +1,14 @@
+{
+  "activeProvider": "default",
+  "providers": {
+    "default": {
+      "type": "openai-chat",
+      "baseUrl": "https://api.openai.com",
+      "apiKeyEnv": "DREAMSEED_API_KEY",
+      "model": "gpt-4o-mini",
+      "chatCompletionsPath": "/v1/chat/completions",
+      "systemPrefix": "Always place the final answer in visible message content.",
+      "timeoutMs": 120000
+    }
+  }
+}

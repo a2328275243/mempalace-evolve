@@ -81,6 +81,7 @@ function Invoke-BrandAudit {
 
 Require-Path "bin\dreamseed-agent.js"
 Require-Path "bin\dreamseed.cmd"
+Require-Path "bin\dreamseed-desktop.cmd"
 Require-Path "config\brand_allowlist.json"
 Require-Path "config\mcp.registry.json"
 Require-Path "config\approval.policy.json"
@@ -102,6 +103,7 @@ Require-Path ".dreamseed\agents\ecosystem-integrator.md"
 Require-Path "scripts\dreamseed-memory-bridge.ps1"
 Require-Path "scripts\dreamseed_memory_bridge.py"
 Require-Path "scripts\install-python-deps.ps1"
+Require-Path "scripts\install-dreamseed-desktop-shortcut.ps1"
 Require-Path "scripts\build-python-wheelhouse.ps1"
 Require-Path "scripts\dreamseed-mempalace-mcp.ps1"
 Require-Path "scripts\provider_bridge.mjs"
@@ -112,6 +114,13 @@ Require-Path "scripts\dreamseed_self_evolve.py"
 Require-Path "scripts\dreamseed_context_doctor.py"
 Require-Path "scripts\dreamseed_usage.py"
 Require-Path "scripts\dreamseed_output_compress.py"
+Require-Path "scripts\dreamseed-precompact.ps1"
+Require-Path "scripts\dreamseed-runtime-compact-patch.ps1"
+Require-Path "scripts\dreamseed_compact_cache.py"
+Require-Path "scripts\install-dreamseed.ps1"
+Require-Path "scripts\uninstall-dreamseed.ps1"
+Require-Path "scripts\dreamseed_desktop.mjs"
+Require-Path "scripts\dreamseed-desktop-launch.ps1"
 Require-Path "scripts\dreamseed_memory_cli.py"
 Require-Path "scripts\dreamseed_eval.py"
 Require-Path "scripts\provider_tools.py"
@@ -125,6 +134,11 @@ Require-Path "scripts\dreamseed-smoke.ps1"
 Require-Path "manager\index.html"
 Require-Path "manager\app.css"
 Require-Path "manager\app.js"
+Require-Path "desktop\electron-main.mjs"
+Require-Path "desktop\preload.cjs"
+Require-Path "desktop\index.html"
+Require-Path "desktop\desktop.css"
+Require-Path "desktop\desktop.js"
 Require-Path "requirements-dreamseed.txt"
 Require-Path "vendor\python-wheels\README.md"
 Require-Path "restored-src"
@@ -242,6 +256,17 @@ if ($Settings.hooks.PermissionRequest) {
 if (-not ($PermissionHookCommands -join "`n" -match "dreamseed-approval-gate\.ps1|approval_gate\.py")) {
   Add-Failure ".dreamseed\settings.json must wire PermissionRequest to DreamSeed approval gate"
 }
+$PreCompactHookCommands = @()
+if ($Settings.hooks.PreCompact) {
+  foreach ($Group in $Settings.hooks.PreCompact) {
+    foreach ($Hook in $Group.hooks) {
+      $PreCompactHookCommands += [string]$Hook.command
+    }
+  }
+}
+if (-not ($PreCompactHookCommands -join "`n" -match "dreamseed-precompact\.ps1")) {
+  Add-Failure ".dreamseed\settings.json must wire PreCompact to DreamSeed compact policy"
+}
 foreach ($TooBroadAllow in @("Bash(powershell:*)", "Bash(npm:*)", "Bash(python:*)", "Write(scripts/**)", "Edit(scripts/**)")) {
   if ($Settings.permissions.allow -contains $TooBroadAllow) {
     Add-Failure ".dreamseed\settings.json still contains broad allow that bypasses approval gate: $TooBroadAllow"
@@ -319,6 +344,11 @@ foreach ($RequiredLauncherText in @("DREAMSEED_OUTPUT_COMPRESS", "DREAMSEED_OUTP
     Add-Failure "bin\dreamseed-agent.js is missing controlled output compression behavior: $RequiredLauncherText"
   }
 }
+foreach ($RequiredLauncherText in @("compact-cache", "provider diagnose", "defaultProviderSystemPrefix")) {
+  if ($LauncherText -notmatch [regex]::Escape($RequiredLauncherText)) {
+    Add-Failure "bin\dreamseed-agent.js is missing model/compact usability behavior: $RequiredLauncherText"
+  }
+}
 foreach ($RequiredApprovalText in @("approvalGateScript", "isApprovalCommand", "runApprovalCommand", "dreamseed approval audit")) {
   if ($LauncherText -notmatch [regex]::Escape($RequiredApprovalText)) {
     Add-Failure "bin\dreamseed-agent.js is missing approval CLI behavior: $RequiredApprovalText"
@@ -333,7 +363,7 @@ foreach ($RequiredApprovalText in @("PermissionRequest", "auto-review", "critica
 }
 
 $ProviderToolsText = Get-Content -LiteralPath (Join-Path $RepoRoot "scripts\provider_tools.py") -Raw
-foreach ($RequiredProviderToolsText in @("provider_latency", "provider_config_health", "APPDATA", "export-redacted", "import_redacted", "outputPreview")) {
+foreach ($RequiredProviderToolsText in @("provider_latency", "provider_config_health", "APPDATA", "export-redacted", "import_redacted", "outputPreview", "diagnose_providers", "recommend_prompt_adapter", "lastToolProbe")) {
   if ($ProviderToolsText -notmatch [regex]::Escape($RequiredProviderToolsText)) {
     Add-Failure "provider_tools.py is missing Provider Manager 2.0 diagnostics: $RequiredProviderToolsText"
   }
@@ -353,6 +383,12 @@ foreach ($Rel in $PublishScanRoots) {
   $Matches = $Files | Select-String -Pattern $LegacyNamespace -SimpleMatch -ErrorAction SilentlyContinue
   foreach ($Match in $Matches) {
     Add-Failure "Forbidden legacy namespace in publish layer: $($Match.Path):$($Match.LineNumber)"
+  }
+  foreach ($SecretPattern in @("ghp_[A-Za-z0-9_]{20,}", "github_pat_[A-Za-z0-9_]{20,}", "sk-[A-Za-z0-9_-]{20,}")) {
+    $SecretMatches = $Files | Select-String -Pattern $SecretPattern -ErrorAction SilentlyContinue
+    foreach ($Match in $SecretMatches) {
+      Add-Failure "Secret-like token in publish layer: $($Match.Path):$($Match.LineNumber)"
+    }
   }
 }
 

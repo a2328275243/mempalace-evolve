@@ -109,6 +109,9 @@ function publicProvider(name, provider) {
     apiKeyEnv: provider.apiKeyEnv || '',
     hasApiKey: Boolean(provider.apiKey),
     auth: describeProviderAuth(provider),
+    agentCapable: provider.agentCapable,
+    toolSupport: provider.toolSupport || '',
+    modality: provider.modality || provider.capability || '',
   }
 }
 
@@ -172,6 +175,10 @@ function providerFromBody(body, existing = {}, options = {}) {
     systemPrefix: String(body.systemPrefix ?? existing.systemPrefix ?? 'Always place the final answer in visible message content.'),
     timeoutMs,
   }
+  if (body.agentCapable !== undefined) provider.agentCapable = Boolean(body.agentCapable)
+  else if (existing.agentCapable !== undefined) provider.agentCapable = Boolean(existing.agentCapable)
+  if (body.toolSupport || existing.toolSupport) provider.toolSupport = String(body.toolSupport || existing.toolSupport)
+  if (body.modality || existing.modality) provider.modality = String(body.modality || existing.modality)
 
   if (body.apiKeyEnv) provider.apiKeyEnv = String(body.apiKeyEnv).trim()
   if (body.apiKey) provider.apiKey = String(body.apiKey)

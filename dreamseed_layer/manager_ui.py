@@ -1,31 +1,31 @@
-#!/usr/bin/env python3
-"""DreamSeed Manager UI - 模型管理器入口"""
+"""Python entry point for the DreamSeed model manager."""
 
-import os
+from __future__ import annotations
+
+import shutil
+import subprocess
 import sys
-import webbrowser
-import threading
-import time
+from pathlib import Path
 
-def start_manager():
-    """启动模型管理器 Web UI"""
-    script_path = os.path.join(
-        os.path.dirname(__file__),
-        "dreamseed-layer",
-        "scripts",
-        "manager.ps1"
-    )
 
-    print("🌐 启动 DreamSeed 模型管理器...")
-    print("   浏览器将自动打开 http://127.0.0.1:8765")
-    print("   按 Ctrl+C 停止服务\n")
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DREAMSEED_LAYER = PROJECT_ROOT / "dreamseed-layer"
+MANAGER_SCRIPT = DREAMSEED_LAYER / "scripts" / "provider_manager.mjs"
 
-    # 尝试启动管理器
-    try:
-        os.system(f'powershell -ExecutionPolicy Bypass -File "{script_path}"')
-    except Exception as e:
-        print(f"启动失败: {e}")
-        print("请手动运行: dreamseed manager")
+
+def main(argv: list[str] | None = None) -> int:
+    """Open the DreamSeed provider manager."""
+
+    args = list(sys.argv[1:] if argv is None else argv)
+    node = shutil.which("node")
+    if not node:
+        print("DreamSeed Manager requires Node.js 18+ on PATH.", file=sys.stderr)
+        return 1
+    if not MANAGER_SCRIPT.exists():
+        print(f"DreamSeed manager script is missing: {MANAGER_SCRIPT}", file=sys.stderr)
+        return 1
+    return subprocess.call([node, str(MANAGER_SCRIPT), *args], cwd=str(DREAMSEED_LAYER))
+
 
 if __name__ == "__main__":
-    start_manager()
+    raise SystemExit(main())

@@ -14,6 +14,7 @@
     "README.md",
     "bin",
     "config",
+    "desktop",
     "docs",
     "manager",
     "requirements-dreamseed.txt",
@@ -28,6 +29,7 @@
     "install:python": "powershell -ExecutionPolicy Bypass -File scripts/install-python-deps.ps1",
     "memory": "powershell -ExecutionPolicy Bypass -File scripts/dreamseed-memory.ps1",
     "manager": "node scripts/provider_manager.mjs",
+    "desktop": "node scripts/dreamseed_desktop.mjs",
     "doctor:context": "python scripts/dreamseed_context_doctor.py",
     "doctor:mcp": "python scripts/mcp_doctor.py smoke",
     "doctor:hooks": "python scripts/hook_doctor.py audit",
@@ -55,6 +57,9 @@
     "dreamseed"
   ],
   "license": "MIT",
+  "dependencies": {
+    "electron": "^42.3.3"
+  },
   "engines": {
     "node": ">=18.0.0"
   }

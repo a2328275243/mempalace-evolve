@@ -1,0 +1,39 @@
+# Local compatibility runtime artifacts. DreamSeed publishes split source, not bundled kernels.
+package/
+*.tgz
+
+# Generated release artifacts.
+dist/
+*.zip
+*.tgz
+
+# Local memory and caches.
+.dreamseed-memory/
+.dreamseed-runtime/
+legacy-history/
+memory-candidates/
+self-evolve-candidates/
+self-evolve-backups/
+.mempalace/
+.pytest_cache/
+.cache/
+__pycache__/
+*.pyc
+node_modules/
+
+# Logs and transient diagnostics.
+logs/
+logs/hook-trace/
+*.log
+debug/
+tmp/
+temp/
+
+# Local overrides and secrets.
+.env
+.env.*
+!.env.example
+config/providers.local.json
+.dreamseed/providers.local.json
+.dreamseed/settings.local.json
+DREAMSEED.local.md

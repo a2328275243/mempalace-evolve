@@ -6,6 +6,7 @@ import json
 import os
 import re
 import shutil
+import sys
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -646,6 +647,7 @@ def search_history(dest: Path, query: str, limit: int) -> dict[str, Any]:
         if not data:
             continue
         project = str(data.get("project") or "")
+        metadata = session_metadata(data, path)
         for entry in data.get("entries", []):
             display = str(entry.get("display") or "")
             haystack = f"{project}\n{display}".lower()
@@ -658,6 +660,16 @@ def search_history(dest: Path, query: str, limit: int) -> dict[str, Any]:
                     "time": entry.get("iso_time"),
                     "type": entry.get("type"),
                     "snippet": snippet(redact(display), query),
+                    "preview": metadata.get("preview") or snippet(redact(display), query),
+                    "title": metadata.get("title"),
+                    "user_preview": metadata.get("user_preview") or snippet(redact(display), query),
+                    "assistant_summary": metadata.get("assistant_summary"),
+                    "summary_kind": metadata.get("summary_kind"),
+                    "project_name": metadata.get("project_name"),
+                    "entry_count": metadata.get("entry_count") or len(data.get("entries", [])),
+                    "last_time": metadata.get("last_time"),
+                    "last_timestamp": metadata.get("last_timestamp"),
+                    "is_resume_stub": metadata.get("is_resume_stub", False),
                     "session_file": str(path),
                     "_rank": search_rank(query, project, display, entry.get("timestamp") or data.get("last_timestamp") or 0),
                 }
@@ -1051,14 +1063,12 @@ def load_session_summaries(dest: Path) -> list[dict[str, Any]]:
 
 def session_metadata(session: dict[str, Any], session_file: Path) -> dict[str, Any]:
     entries = session.get("entries", [])
-    preview = ""
-    for entry in reversed(entries):
-        preview = snippet(redact(str(entry.get("display") or "")), "", radius=140).strip()
-        if preview:
-            break
+    previews = session_preview_bundle(session)
+    preview = previews["user_preview"] or previews["title"]
     is_resume_stub = session_is_resume_stub(session, preview)
     return {
         "project": session.get("project"),
+        "project_name": project_display_name(session.get("project")),
         "session_id": session.get("session_id"),
         "first_time": session.get("first_iso_time"),
         "last_time": session.get("last_iso_time"),
@@ -1066,10 +1076,120 @@ def session_metadata(session: dict[str, Any], session_file: Path) -> dict[str, A
         "last_timestamp": session.get("last_timestamp") or 0,
         "entry_count": session.get("entry_count"),
         "content_hash": session.get("content_hash"),
+        "title": previews["title"],
         "preview": preview,
+        "user_preview": previews["user_preview"],
+        "assistant_summary": previews["assistant_summary"],
+        "summary_kind": previews["summary_kind"],
         "is_resume_stub": is_resume_stub,
+        "source_kind": session.get("source_kind") or "",
+        "desktop_thread_id": session.get("desktop_thread_id") or "",
+        "desktop_mode": session.get("desktop_mode") or "",
+        "desktop_status": session.get("desktop_status") or "",
         "session_file": str(session_file),
     }
+
+
+def session_preview_bundle(session: dict[str, Any]) -> dict[str, str]:
+    entries = session.get("entries", [])
+    seen: set[str] = set()
+    user_texts: list[str] = []
+    assistant_texts: list[str] = []
+    fallback_texts: list[str] = []
+
+    for entry in entries:
+        entry_type = str(entry.get("type") or "").lower()
+        text = clean_preview_text(entry.get("display"))
+        if not text:
+            continue
+        key = re.sub(r"\s+", " ", text).strip().lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        if is_noisy_preview_text(text):
+            continue
+        if is_assistant_summary_type(entry_type):
+            assistant_texts.append(text)
+        elif is_user_history_type(entry_type):
+            user_texts.append(text)
+        else:
+            fallback_texts.append(text)
+
+    project = project_display_name(session.get("project"))
+    entry_count = int(session.get("entry_count") or len(entries) or 0)
+    user_preview = (user_texts[-1:] or user_texts[:1] or fallback_texts[-1:] or [""])[0]
+    title_source = (user_texts[:1] or [user_preview] or [project])[0]
+    title = compact_title("", title_source, limit=72).lstrip(" -") or project or "Legacy session"
+    if assistant_texts:
+        assistant_summary = compact_title("", assistant_texts[-1], limit=220).lstrip(" -")
+        summary_kind = "assistant"
+    else:
+        focus = user_preview or ("" if title == project else title)
+        assistant_summary = compact_title(
+            "",
+            f"{project or 'Project'} 的历史主要围绕「{focus}」。" if focus else f"{project or 'Project'} 的项目历史已导入，可以从这里继续。",
+            limit=220,
+        ).lstrip(" -")
+        summary_kind = "local"
+
+    if summary_kind == "local":
+        if focus:
+            assistant_summary = compact_title(
+                "",
+                f"{project or 'Project'} history mainly focuses on \"{focus}\".",
+                limit=220,
+            ).lstrip(" -")
+        else:
+            assistant_summary = compact_title(
+                "",
+                f"{project or 'Project'} history is imported and ready to continue.",
+                limit=220,
+            ).lstrip(" -")
+
+    return {
+        "title": title,
+        "user_preview": user_preview,
+        "assistant_summary": assistant_summary,
+        "summary_kind": summary_kind,
+    }
+
+
+def clean_preview_text(value: Any) -> str:
+    text = snippet(redact(str(value or "")), "", radius=180).strip()
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def is_user_history_type(entry_type: str) -> bool:
+    if "assistant" in entry_type or "tool" in entry_type:
+        return False
+    return (
+        entry_type in {"legacy", "reconstructed_user_history"}
+        or "user" in entry_type
+        or "human" in entry_type
+    )
+
+
+def is_assistant_summary_type(entry_type: str) -> bool:
+    return "assistant" in entry_type or "summary" in entry_type
+
+
+def is_noisy_preview_text(text: str) -> bool:
+    lowered = text.strip().lower()
+    if not lowered:
+        return True
+    if lowered in {"/resume", "resume", "/clear", "/compact", "/init", "/maintain-assistant", "ok"}:
+        return True
+    if lowered.startswith("/") and len(lowered.split()) <= 1:
+        return True
+    return "do_not_auto_resume" in lowered or "context limit reached" in lowered
+
+
+def project_display_name(project: Any) -> str:
+    text = str(project or "").strip()
+    if not text or text == "unknown":
+        return "Unknown"
+    parts = [part for part in re.split(r"[\\/]+", text) if part]
+    return parts[-1] if parts else text
 
 
 def find_session(dest: Path, target: str) -> tuple[dict[str, Any], Path]:
@@ -1200,7 +1320,13 @@ def now() -> str:
 
 
 def print_json(data: Any) -> None:
-    print(json.dumps(data, ensure_ascii=False, indent=2, default=str))
+    text = json.dumps(data, ensure_ascii=False, indent=2, default=str)
+    try:
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        print(text)
+    except UnicodeEncodeError:
+        sys.stdout.buffer.write((text + "\n").encode("utf-8", errors="replace"))
 
 
 if __name__ == "__main__":

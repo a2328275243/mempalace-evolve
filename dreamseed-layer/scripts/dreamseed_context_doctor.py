@@ -59,6 +59,8 @@ def build_report(root: Path, top: int = 10) -> dict[str, Any]:
         "projectCount": legacy_manifest.get("project_count", 0) if isinstance(legacy_manifest, dict) else 0,
         "resumePolicy": "summary-only; do not inject raw legacy history into every prompt",
     }
+    compact_stats = inspect_compact_pressure(root)
+    compact_cache = inspect_compact_cache(root)
 
     if candidate_files:
         total_candidate_bytes = sum(p.stat().st_size for p in candidate_files if p.exists())
@@ -85,9 +87,11 @@ def build_report(root: Path, top: int = 10) -> dict[str, Any]:
             "approxTokens": approx_tokens(total_chars),
             "memoryCandidateCount": len(candidate_files),
             "legacyHistory": history_stats,
+            "compactPressure": compact_stats,
+            "compactCache": compact_cache,
         },
         "largest": largest,
-        "recommendations": recommendations(largest, history_stats, len(candidate_files)),
+        "recommendations": recommendations(largest, history_stats, len(candidate_files), compact_stats),
         "missingOptional": missing,
     }
     return report
@@ -167,7 +171,64 @@ def dedupe(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return unique
 
 
-def recommendations(largest: list[dict[str, Any]], history_stats: dict[str, Any], candidate_count: int) -> list[str]:
+def local_root_for(root: Path) -> Path:
+    return root.parents[1] if len(root.parents) > 1 and root.parent.name == "app" else root
+
+
+def inspect_compact_pressure(root: Path) -> dict[str, Any]:
+    local_root = local_root_for(root)
+    projects_dir = local_root / "home" / ("." + "claude") / "projects"
+    jsonl_files = sorted(projects_dir.glob("**/*.jsonl")) if projects_dir.exists() else []
+    total_bytes = sum(p.stat().st_size for p in jsonl_files if p.exists())
+    largest = sorted(
+        [
+            {
+                "path": str(p.relative_to(local_root)).replace("\\", "/"),
+                "bytes": p.stat().st_size,
+                "approxTokens": approx_tokens(p.stat().st_size),
+                "isCompactAgent": p.name.startswith("agent-acompact-"),
+            }
+            for p in jsonl_files
+            if p.exists()
+        ],
+        key=lambda item: item["bytes"],
+        reverse=True,
+    )[:5]
+    compact_agent_count = sum(1 for item in largest if item["isCompactAgent"])
+    compact_agent_total = sum(1 for p in jsonl_files if p.name.startswith("agent-acompact-"))
+    return {
+        "nativeSessionDir": str(projects_dir),
+        "sessionFileCount": len(jsonl_files),
+        "totalBytes": total_bytes,
+        "approxTokens": approx_tokens(total_bytes),
+        "largestFiles": largest,
+        "compactAgentFileCount": compact_agent_total,
+        "risk": risk_label(total_bytes),
+        "policy": "Do not edit session JSONL by default; use PreCompact policy and output compression first.",
+        "largestCompactAgentFilesShown": compact_agent_count,
+    }
+
+
+def inspect_compact_cache(root: Path) -> dict[str, Any]:
+    local_root = local_root_for(root)
+    path = local_root / "cache" / "compact-summaries.json"
+    data = read_json(path)
+    return {
+        "path": str(path),
+        "exists": path.exists(),
+        "builtAt": data.get("builtAt") if isinstance(data, dict) else "",
+        "projectCount": data.get("projectCount", 0) if isinstance(data, dict) else 0,
+        "fileCount": data.get("fileCount", 0) if isinstance(data, dict) else 0,
+        "policy": "Use cached project/session summaries for compact handoff; never inject raw private history.",
+    }
+
+
+def recommendations(
+    largest: list[dict[str, Any]],
+    history_stats: dict[str, Any],
+    candidate_count: int,
+    compact_stats: dict[str, Any],
+) -> list[str]:
     recs: list[str] = []
     for item in largest[:5]:
         if item["risk"] in {"medium", "high"}:
@@ -178,7 +239,12 @@ def recommendations(largest: list[dict[str, Any]], history_stats: dict[str, Any]
         recs.append("Run memory_review.py reject --all-noisy, then promote only reviewed candidates.")
     if history_stats.get("sessionCount", 0):
         recs.append("Keep /resume summary-based; avoid loading raw legacy sessions into every request.")
-    recs.append("Runtime output compression is opt-in: DREAMSEED_OUTPUT_COMPRESS=off|auto|always and DREAMSEED_OUTPUT_COMPRESS_LIMIT=12000.")
+    if compact_stats.get("totalBytes", 0) >= 1_000_000:
+        recs.append("Large native session JSONL detected; PreCompact now injects a Codex-style summary policy before manual /compact.")
+    if compact_stats.get("compactAgentFileCount", 0):
+        recs.append("agent-acompact session files exist; avoid repeated manual /compact loops when a compact is already slow or interrupted.")
+    recs.append("Refresh compact summary cache with scripts/dreamseed_compact_cache.py build before very long /compact sessions.")
+    recs.append("Runtime output compression: DREAMSEED_OUTPUT_COMPRESS=off|auto|always and DREAMSEED_OUTPUT_COMPRESS_LIMIT=12000.")
     if not recs:
         recs.append("Context footprint is small enough for the current source-first setup.")
     return recs[:10]
@@ -198,6 +264,20 @@ def print_table(report: dict[str, Any]) -> None:
     print("Recommendations:")
     for rec in report["recommendations"]:
         print(f"  - {rec}")
+    compact = summary.get("compactPressure") or {}
+    if compact:
+        print("")
+        print("Compact pressure:")
+        print(
+            f"  - native sessions={compact.get('sessionFileCount')} "
+            f"bytes={compact.get('totalBytes')} tokens~{compact.get('approxTokens')} "
+            f"risk={compact.get('risk')}"
+        )
+        for item in compact.get("largestFiles", []):
+            print(f"  - {item['path']} bytes={item['bytes']} tokens~{item['approxTokens']}")
+    cache = summary.get("compactCache") or {}
+    if cache:
+        print(f"  - compact cache exists={cache.get('exists')} projects={cache.get('projectCount')} path={cache.get('path')}")
 
 
 def print_json(data: Any) -> None:

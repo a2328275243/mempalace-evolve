@@ -125,6 +125,10 @@ function Remove-FileSafely([string]$Path) {
 }
 
 function Move-FileSafely([string]$Source, [string]$Destination) {
+  $Parent = Split-Path -Parent $Destination
+  if ($Parent) {
+    New-Item -ItemType Directory -Force -Path $Parent | Out-Null
+  }
   for ($Attempt = 1; $Attempt -le 5; $Attempt++) {
     try {
       if (Test-Path -LiteralPath $Destination) {
@@ -141,6 +145,33 @@ function Move-FileSafely([string]$Source, [string]$Destination) {
   }
 }
 
+function Test-ZipEntryContains($Archive, [string]$EntryName, [string[]]$Tokens) {
+  $NormalizedEntryName = $EntryName -replace "\\", "/"
+  $Entry = $null
+  foreach ($Candidate in $Archive.Entries) {
+    $CandidateName = $Candidate.FullName -replace "\\", "/"
+    if ($CandidateName -eq $NormalizedEntryName) {
+      $Entry = $Candidate
+      break
+    }
+  }
+  if (-not $Entry) {
+    return $false
+  }
+  $Reader = [System.IO.StreamReader]::new($Entry.Open())
+  try {
+    $Text = $Reader.ReadToEnd()
+    foreach ($Token in $Tokens) {
+      if (-not $Text.Contains($Token)) {
+        return $false
+      }
+    }
+    return $true
+  } finally {
+    $Reader.Dispose()
+  }
+}
+
 function Test-ZipPolicy([string]$Path) {
   if (-not (Test-Path -LiteralPath $Path)) {
     return $false
@@ -150,6 +181,7 @@ function Test-ZipPolicy([string]$Path) {
   try {
     $Required = @(
       "bin/dreamseed-agent.js",
+      "bin/dreamseed-desktop.cmd",
       "config/approval.policy.json",
       "config/mcp.registry.json",
       "docs/approval-gate.md",
@@ -158,8 +190,20 @@ function Test-ZipPolicy([string]$Path) {
       "docs/release-checklist.md",
       "scripts/approval_gate.py",
       "scripts/dreamseed-approval-gate.ps1",
+      "scripts/dreamseed_desktop.mjs",
+      "scripts/desktop_render_smoke.mjs",
+      "desktop/electron-main.mjs",
+      "desktop/shared-history.mjs",
+      "desktop/preload.cjs",
+      "desktop/index.html",
+      "desktop/desktop.js",
+      "desktop/desktop.css",
+      "package-lock.json",
       "scripts/dreamseed_eval.py",
       "scripts\dreamseed_memory_cli.py",
+      "scripts/dreamseed_compact_cache.py",
+      "scripts/install-dreamseed.ps1",
+      "scripts/uninstall-dreamseed.ps1",
       "scripts\provider_tools.py",
       ".dreamseed/tasks/release-check.json"
     )
@@ -169,13 +213,39 @@ function Test-ZipPolicy([string]$Path) {
       $Names[$SlashName] = $true
       $Name = $Entry.FullName -replace "/", "\"
       $KernelFilePattern = "cli" + "\.js(\.map)?$"
-      if ($Name -match "(^|\\)package(\\|$)" -or $Name -match $KernelFilePattern -or $Name.Contains($LegacyNamespace) -or $Name -match "\.dreamseed-runtime" -or $Name -match "\.dreamseed-memory" -or $Name -match "(^|\\)legacy-history(\\|$)" -or $Name -match "(^|\\)memory-candidates(\\|$)" -or $Name -match "(^|\\)self-evolve-candidates(\\|$)" -or $Name -match "(^|\\)self-evolve-backups(\\|$)" -or $Name -match "(^|\\)logs(\\|$)" -or $Name -match "(^|\\)cache(\\|$)" -or $Name -match "(^|\\)\.cache(\\|$)" -or $Name -match "(^|\\)\.dreamseed-deploy-backups(\\|$)" -or $Name -match "(^|\\)__pycache__(\\|$)" -or $Name -match "\.pyc$" -or $Name -match "(^|\\)node_modules(\\|$)" -or $Name -match "(^|\\)providers\.local\.json$") {
+      if ($Name -match "(^|\\)package(\\|$)" -or $Name -match $KernelFilePattern -or $Name -match "(^|\\)dreamseed-lite-kernel\.js$" -or $Name.Contains($LegacyNamespace) -or $Name -match "\.dreamseed-runtime" -or $Name -match "\.dreamseed-memory" -or $Name -match "(^|\\)legacy-history(\\|$)" -or $Name -match "(^|\\)memory-candidates(\\|$)" -or $Name -match "(^|\\)self-evolve-candidates(\\|$)" -or $Name -match "(^|\\)self-evolve-backups(\\|$)" -or $Name -match "(^|\\)logs(\\|$)" -or $Name -match "(^|\\)cache(\\|$)" -or $Name -match "(^|\\)\.cache(\\|$)" -or $Name -match "(^|\\)\.dreamseed-deploy-backups(\\|$)" -or $Name -match "(^|\\)__pycache__(\\|$)" -or $Name -match "\.pyc$" -or $Name -match "(^|\\)node_modules(\\|$)" -or $Name -match "(^|\\)providers\.local\.json$") {
         return $false
+      }
+      if ($Entry.Length -lt 2000000 -and $Name -match "\.(json|js|mjs|cjs|py|ps1|md|txt|cmd|html|css)$") {
+        $Reader = [System.IO.StreamReader]::new($Entry.Open())
+        try {
+          $Text = $Reader.ReadToEnd()
+          if ($Text -match "ghp_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{20,}") {
+            return $false
+          }
+        } finally {
+          $Reader.Dispose()
+        }
       }
     }
     foreach ($Rel in $Required) {
       $Normalized = $Rel -replace "\\", "/"
       if (-not $Names.ContainsKey($Normalized)) {
+        return $false
+      }
+    }
+    $DesktopTokenChecks = @(
+      @{ Entry = "desktop/electron-main.mjs"; Tokens = @("persistDesktopHistorySession", "./shared-history.mjs", "randomUUID", "writeDesktopHistorySession", "task:cancel", "task:output", "provider:diagnose", "desktop:tasks:list", "desktop:tasks:upsert", "desktop:settings:update", "runningTaskProcesses", "terminateChildProcess", "stdio: ['ignore', 'pipe', 'pipe']") },
+      @{ Entry = "bin/dreamseed-agent.js"; Tokens = @("preferredLocalProviderConfigPath", "inferLocalRootFromRepo", "DREAMSEED_LOCAL_ROOT", "DREAMSEED_CONFIG_DIR", "compact-cache", "provider diagnose", "defaultProviderSystemPrefix") },
+      @{ Entry = "desktop/shared-history.mjs"; Tokens = @("writeDesktopHistorySession", "writeDesktopNativeResumeBridge", "dreamseed-desktop-resume-bridge", "nativeResumePath", "nativeSanitizePath", "source_kind", "desktop_thread_id") },
+      @{ Entry = "scripts/desktop_render_smoke.mjs"; Tokens = @("BrowserWindow", "history-project-group", "history-time-bucket", "conversationItems", "sidebarScroll", "modelChip", "providerPills", "addProviderPill", "newModelDraft", "newModelDrawer", "savedModelVisible", "provider:save", "taskRunner", "taskCards", "taskDone", "task:run", "task:cancel", "workbench", "reviewFiles", "diffLines", "DREAMSEED_DESKTOP_RENDER_SCREENSHOT", "capturePage") },
+      @{ Entry = "desktop/preload.cjs"; Tokens = @("allowedInvokeChannels", "contextBridge", "ipcRenderer.invoke", "task:cancel", "provider:diagnose", "task:output") },
+      @{ Entry = "desktop/index.html"; Tokens = @("app-shell", "messageList", "taskRunnerPanel", "taskQueueList", "taskConcurrencyInput", "artifactTimelinePanel", "diagnoseModelBtn", "historySessionList", "workbenchSplit", "terminalSplitForm", "reviewSplit", "reviewDiffOutput", "providerQuickList", "modelCountLabel", "panel-models", "modelStatusBtn", "sidebar-scroll", "section-actions", "sidebar-nav", "nav-command", "active-context-card", "sidebarActiveProject", "sidebarActiveModel", "settings.title", "project-list-hidden") },
+      @{ Entry = "desktop/desktop.js"; Tokens = @("renderHistoryConversation", "normalizeHistorySessions", "groupedHistorySessions", "bucketHistorySessions", "renderTaskRunner", "renderArtifactsTimeline", "pumpTaskQueue", "runQueuedTask", "cancelTask", "handleTaskOutput", "persistTask", "updateTaskConcurrency", "diagnoseProviders", "MAX_CONCURRENT_DESKTOP_TASKS", "renderProviderQuickList", "appendAddProviderPill", "switchProviderQuick", "startNewModel", "sortedProviders", "renderWorkbench", "toggleWorkbenchPanel", "makeThreadTitle", "renderDiffReview", "diffOutputHtml", "summaryLabelForSession", "isUsefulHistorySession", "showProjectHome", "projectGroupCountLabel", "cleanProjectOpeningLine", "cleanSessionOpeningLine", "projectExcerptMessages", "source_kind", "dedupeHistoryEntries", "roleForHistory", "messageList", "providerCapabilityLabel", "settings.title", "context.current") },
+      @{ Entry = "desktop/desktop.css"; Tokens = @(".app-shell", "drawer-open", "history-project-group", "history-time-bucket", ".task-runner-panel", ".task-card", ".task-output", ".task-concurrency", ".artifact-timeline-panel", ".artifact-item", ".provider-quick-list", ".provider-pill", ".add-provider-pill", ".model-tags", ".workbench-split", ".review-diff-output", ".diff-line b", ".diff-line.add", "active-project", ".message-list", ".conversation-item", ".drawer", ".model-status-chip", ".sidebar-scroll", "scrollbar-gutter", "section-actions", "sidebar-nav", "nav-command", "active-context-card", "project-list-hidden") }
+    )
+    foreach ($Check in $DesktopTokenChecks) {
+      if (-not (Test-ZipEntryContains $Archive $Check.Entry $Check.Tokens)) {
         return $false
       }
     }
@@ -196,6 +266,7 @@ $IncludePaths = @(
   ".dreamseed",
   "bin",
   "config",
+  "desktop",
   "docs",
   "manager",
   "scripts",
@@ -207,6 +278,7 @@ $IncludePaths = @(
   "DREAMSEED.md",
   "README.md",
   "package.json",
+  "package-lock.json",
   "requirements-dreamseed.txt"
 )
 
@@ -278,7 +350,8 @@ $Forbidden = @(
   ".omni-memory",
   ".dreamseed-deploy-backups",
   "config\providers.local.json",
-  ".dreamseed\providers.local.json"
+  ".dreamseed\providers.local.json",
+  "bin\dreamseed-lite-kernel.js"
 )
 
 foreach ($Rel in $Forbidden) {
@@ -298,8 +371,34 @@ try {
   foreach ($Entry in $Archive.Entries) {
     $Name = $Entry.FullName -replace "/", "\"
     $KernelFilePattern = "cli" + "\.js(\.map)?$"
-    if ($Name -match "(^|\\)package(\\|$)" -or $Name -match $KernelFilePattern -or $Name.Contains($LegacyNamespace) -or $Name -match "\.dreamseed-runtime" -or $Name -match "\.dreamseed-memory" -or $Name -match "(^|\\)legacy-history(\\|$)" -or $Name -match "(^|\\)memory-candidates(\\|$)" -or $Name -match "(^|\\)self-evolve-candidates(\\|$)" -or $Name -match "(^|\\)self-evolve-backups(\\|$)" -or $Name -match "(^|\\)logs(\\|$)" -or $Name -match "(^|\\)cache(\\|$)" -or $Name -match "(^|\\)\.cache(\\|$)" -or $Name -match "(^|\\)\.dreamseed-deploy-backups(\\|$)" -or $Name -match "(^|\\)__pycache__(\\|$)" -or $Name -match "\.pyc$" -or $Name -match "(^|\\)node_modules(\\|$)" -or $Name -match "(^|\\)providers\.local\.json$") {
+    if ($Name -match "(^|\\)package(\\|$)" -or $Name -match $KernelFilePattern -or $Name -match "(^|\\)dreamseed-lite-kernel\.js$" -or $Name.Contains($LegacyNamespace) -or $Name -match "\.dreamseed-runtime" -or $Name -match "\.dreamseed-memory" -or $Name -match "(^|\\)legacy-history(\\|$)" -or $Name -match "(^|\\)memory-candidates(\\|$)" -or $Name -match "(^|\\)self-evolve-candidates(\\|$)" -or $Name -match "(^|\\)self-evolve-backups(\\|$)" -or $Name -match "(^|\\)logs(\\|$)" -or $Name -match "(^|\\)cache(\\|$)" -or $Name -match "(^|\\)\.cache(\\|$)" -or $Name -match "(^|\\)\.dreamseed-deploy-backups(\\|$)" -or $Name -match "(^|\\)__pycache__(\\|$)" -or $Name -match "\.pyc$" -or $Name -match "(^|\\)node_modules(\\|$)" -or $Name -match "(^|\\)providers\.local\.json$") {
       throw "Forbidden artifact found in zip: $($Entry.FullName)"
+    }
+    if ($Entry.Length -lt 2000000 -and $Name -match "\.(json|js|mjs|cjs|py|ps1|md|txt|cmd|html|css)$") {
+      $Reader = [System.IO.StreamReader]::new($Entry.Open())
+      try {
+        $Text = $Reader.ReadToEnd()
+        if ($Text -match "ghp_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{20,}") {
+          throw "Secret-like token found in zip: $($Entry.FullName)"
+        }
+      } finally {
+        $Reader.Dispose()
+      }
+    }
+  }
+  $DesktopTokenChecks = @(
+    @{ Entry = "desktop/electron-main.mjs"; Tokens = @("persistDesktopHistorySession", "./shared-history.mjs", "randomUUID", "writeDesktopHistorySession", "task:cancel", "task:output", "provider:diagnose", "desktop:tasks:list", "desktop:tasks:upsert", "desktop:settings:update", "runningTaskProcesses", "terminateChildProcess", "stdio: ['ignore', 'pipe', 'pipe']") },
+    @{ Entry = "bin/dreamseed-agent.js"; Tokens = @("preferredLocalProviderConfigPath", "inferLocalRootFromRepo", "DREAMSEED_LOCAL_ROOT", "DREAMSEED_CONFIG_DIR", "compact-cache", "provider diagnose", "defaultProviderSystemPrefix") },
+    @{ Entry = "desktop/shared-history.mjs"; Tokens = @("writeDesktopHistorySession", "writeDesktopNativeResumeBridge", "dreamseed-desktop-resume-bridge", "nativeResumePath", "nativeSanitizePath", "source_kind", "desktop_thread_id") },
+    @{ Entry = "scripts/desktop_render_smoke.mjs"; Tokens = @("BrowserWindow", "history-project-group", "history-time-bucket", "conversationItems", "sidebarScroll", "modelChip", "providerPills", "addProviderPill", "newModelDraft", "newModelDrawer", "savedModelVisible", "provider:save", "taskRunner", "taskCards", "taskDone", "task:run", "task:cancel", "workbench", "reviewFiles", "diffLines", "DREAMSEED_DESKTOP_RENDER_SCREENSHOT", "capturePage") },
+    @{ Entry = "desktop/preload.cjs"; Tokens = @("allowedInvokeChannels", "contextBridge", "ipcRenderer.invoke", "task:cancel", "provider:diagnose", "task:output") },
+    @{ Entry = "desktop/index.html"; Tokens = @("app-shell", "messageList", "taskRunnerPanel", "taskQueueList", "taskConcurrencyInput", "artifactTimelinePanel", "diagnoseModelBtn", "historySessionList", "workbenchSplit", "terminalSplitForm", "reviewSplit", "reviewDiffOutput", "providerQuickList", "modelCountLabel", "panel-models", "modelStatusBtn", "sidebar-scroll", "section-actions", "sidebar-nav", "nav-command", "active-context-card", "sidebarActiveProject", "sidebarActiveModel", "settings.title", "project-list-hidden") },
+    @{ Entry = "desktop/desktop.js"; Tokens = @("renderHistoryConversation", "normalizeHistorySessions", "groupedHistorySessions", "bucketHistorySessions", "renderTaskRunner", "renderArtifactsTimeline", "pumpTaskQueue", "runQueuedTask", "cancelTask", "handleTaskOutput", "persistTask", "updateTaskConcurrency", "diagnoseProviders", "MAX_CONCURRENT_DESKTOP_TASKS", "renderProviderQuickList", "appendAddProviderPill", "switchProviderQuick", "startNewModel", "sortedProviders", "renderWorkbench", "toggleWorkbenchPanel", "makeThreadTitle", "renderDiffReview", "diffOutputHtml", "summaryLabelForSession", "isUsefulHistorySession", "showProjectHome", "projectGroupCountLabel", "cleanProjectOpeningLine", "cleanSessionOpeningLine", "projectExcerptMessages", "source_kind", "dedupeHistoryEntries", "roleForHistory", "messageList", "providerCapabilityLabel", "settings.title", "context.current") },
+    @{ Entry = "desktop/desktop.css"; Tokens = @(".app-shell", "drawer-open", "history-project-group", "history-time-bucket", ".task-runner-panel", ".task-card", ".task-output", ".task-concurrency", ".artifact-timeline-panel", ".artifact-item", ".provider-quick-list", ".provider-pill", ".add-provider-pill", ".model-tags", ".workbench-split", ".review-diff-output", ".diff-line b", ".diff-line.add", "active-project", ".message-list", ".conversation-item", ".drawer", ".model-status-chip", ".sidebar-scroll", "scrollbar-gutter", "section-actions", "sidebar-nav", "nav-command", "active-context-card", "project-list-hidden") }
+  )
+  foreach ($Check in $DesktopTokenChecks) {
+    if (-not (Test-ZipEntryContains $Archive $Check.Entry $Check.Tokens)) {
+      throw "Desktop package token check failed for $($Check.Entry)"
     }
   }
 } finally {

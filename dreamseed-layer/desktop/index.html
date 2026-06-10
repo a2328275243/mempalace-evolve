@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DreamSeed Desktop</title>
+    <link rel="stylesheet" href="./desktop.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <aside class="sidebar" aria-label="DreamSeed sidebar">
+        <header class="sidebar-head">
+          <div class="brand-mark" aria-hidden="true">DS</div>
+          <div class="brand-copy">
+            <strong>DreamSeed</strong>
+            <span id="sidebarSubtitle">Desktop Agent</span>
+          </div>
+        </header>
+
+        <nav class="sidebar-nav" aria-label="DreamSeed actions">
+          <button id="newChatBtn" class="nav-command primary" type="button">
+            <span class="nav-icon" aria-hidden="true">+</span>
+            <strong data-i18n="action.newChat">New chat</strong>
+          </button>
+
+          <label class="search-box nav-command" aria-label="Search history">
+            <span class="nav-icon" aria-hidden="true">/</span>
+            <input id="historySearchInput" spellcheck="false" autocomplete="off" data-i18n-placeholder="placeholder.search" />
+          </label>
+
+          <button id="modelsBtn" class="nav-command" type="button" data-drawer="models">
+            <span class="nav-icon" aria-hidden="true">M</span>
+            <strong data-i18n="drawer.models">Models</strong>
+            <small id="activeProviderLabel">-</small>
+          </button>
+
+          <button id="terminalBtn" class="nav-command" type="button">
+            <span class="nav-icon" aria-hidden="true">&gt;_</span>
+            <strong data-i18n="drawer.terminal">Terminal</strong>
+            <small id="activeProjectLabel">-</small>
+          </button>
+
+          <button class="nav-command" type="button" data-drawer="changes">
+            <span class="nav-icon" aria-hidden="true">D</span>
+            <strong data-i18n="drawer.changes">Changes</strong>
+          </button>
+
+          <button id="healthBtn" class="nav-command" type="button" data-drawer="health">
+            <span class="nav-icon" aria-hidden="true">H</span>
+            <strong data-i18n="drawer.health">Health</strong>
+          </button>
+        </nav>
+
+        <section class="active-context-card" aria-label="Active DreamSeed context">
+          <div>
+            <span data-i18n="context.current">Current</span>
+            <strong id="sidebarActiveProject">-</strong>
+          </div>
+          <small id="sidebarActiveModel">-</small>
+        </section>
+
+        <div class="sidebar-scroll" role="region" aria-label="Project history and workspaces" tabindex="0">
+          <section class="sidebar-section unified-project-section">
+            <div class="section-row">
+              <span data-i18n="section.projectThreads">Projects</span>
+              <div class="section-actions">
+                <button id="addProjectBtn" class="text-button" type="button" data-i18n="action.add">Add</button>
+                <button id="refreshHistoryBtn" class="text-button" type="button" data-i18n="action.refresh">Refresh</button>
+              </div>
+            </div>
+            <p id="historyStatusLabel" class="sidebar-note" aria-live="polite">Loading history...</p>
+            <div id="historySessionList" class="conversation-list" aria-live="polite"></div>
+          </section>
+          <div id="projectList" class="project-list project-list-hidden" hidden></div>
+        </div>
+
+        <footer class="sidebar-footer">
+          <div class="footer-actions">
+            <button class="icon-text-button" type="button" data-drawer="health" data-i18n="settings.title">Settings</button>
+            <button id="langToggleBtn" class="icon-text-button" type="button">EN</button>
+          </div>
+        </footer>
+      </aside>
+
+      <section class="chat-shell">
+        <header class="chat-topbar">
+          <div class="title-block">
+            <span id="currentContextLabel" class="context-line">DreamSeed Code</span>
+            <h1 id="chatTitle">New chat</h1>
+          </div>
+          <div class="topbar-actions">
+            <button id="modelStatusBtn" class="model-status-chip" type="button" data-drawer="models">
+              <span data-i18n="drawer.models">Models</span>
+              <strong id="activeModelName">-</strong>
+              <small id="activeModelDetail">-</small>
+            </button>
+            <div id="providerQuickList" class="provider-quick-list" aria-label="Model quick switch"></div>
+            <div class="mode-switch" aria-label="Task mode">
+              <button class="mode-button active" type="button" data-mode="work" data-i18n="mode.work">Work</button>
+              <button class="mode-button" type="button" data-mode="plan" data-i18n="mode.plan">Plan</button>
+              <button class="mode-button" type="button" data-mode="review" data-i18n="mode.review">Review</button>
+            </div>
+            <button id="changesBtn" class="top-button" type="button" data-i18n="drawer.changes">Changes</button>
+            <button id="doctorBtn" class="top-button" type="button" data-doctor="context" data-i18n="action.context">Context</button>
+          </div>
+        </header>
+
+        <section class="conversation-workspace">
+          <section id="messageList" class="message-list" aria-live="polite" tabindex="0"></section>
+
+          <section id="taskRunnerPanel" class="task-runner-panel" aria-label="Task runner" hidden>
+            <header class="task-runner-head">
+              <div>
+                <span class="context-line" data-i18n="task.runner">Task Runner</span>
+                <strong id="taskRunnerTitle">0 / 2</strong>
+              </div>
+              <label class="task-concurrency">
+                <span data-i18n="task.concurrency">Concurrent</span>
+                <input id="taskConcurrencyInput" type="number" min="1" max="6" step="1" value="2" />
+              </label>
+              <span id="taskRunnerSummary" class="context-line"></span>
+            </header>
+            <div id="taskQueueList" class="task-card-list"></div>
+          </section>
+
+          <section id="artifactTimelinePanel" class="artifact-timeline-panel" aria-label="Artifacts timeline" hidden>
+            <header class="artifact-head">
+              <span class="context-line" data-i18n="artifact.timeline">Artifacts</span>
+              <strong id="artifactTimelineTitle">0</strong>
+            </header>
+            <div id="artifactTimelineList" class="artifact-list"></div>
+          </section>
+
+          <section id="workbenchSplit" class="workbench-split" aria-label="DreamSeed workbench" hidden>
+            <header class="workbench-head">
+              <div>
+                <span id="workbenchKicker" class="context-line">Workspace</span>
+                <h2 id="workbenchTitle">Terminal</h2>
+              </div>
+              <div class="workbench-tabs" aria-label="Workbench panels">
+                <button id="workbenchTerminalTab" class="workbench-tab active" type="button" data-workbench="terminal" data-i18n="drawer.terminal">Terminal</button>
+                <button id="workbenchReviewTab" class="workbench-tab" type="button" data-workbench="review" data-i18n="mode.review">Review</button>
+                <button id="closeWorkbenchBtn" class="close-button" type="button" aria-label="Close">x</button>
+              </div>
+            </header>
+
+            <section id="terminalSplit" class="workbench-panel active">
+              <form id="terminalSplitForm" class="terminal-form">
+                <input id="terminalSplitCommandInput" spellcheck="false" autocomplete="off" data-i18n-placeholder="placeholder.terminal" />
+                <button id="terminalSplitRunBtn" class="small-button primary" type="submit" data-i18n="action.run">Run</button>
+              </form>
+              <pre id="terminalSplitOutput" class="output-pane terminal-split-output"></pre>
+            </section>
+
+            <section id="reviewSplit" class="workbench-panel review-panel">
+              <div class="review-toolbar">
+                <div class="segmented">
+                  <button class="seg-button active" type="button" data-diff-mode="status">Status</button>
+                  <button class="seg-button" type="button" data-diff-mode="diff">Diff</button>
+                  <button class="seg-button" type="button" data-diff-mode="stat">Stat</button>
+                  <button id="refreshReviewBtn" class="seg-button" type="button" data-i18n="action.refresh">Refresh</button>
+                </div>
+                <span id="reviewStatusLabel" class="context-line"></span>
+              </div>
+              <div class="review-grid">
+                <div id="reviewFileList" class="review-file-list"></div>
+                <div id="reviewDiffOutput" class="review-diff-output" role="region" aria-label="Diff output"></div>
+              </div>
+            </section>
+          </section>
+
+          <form id="composerForm" class="composer" autocomplete="off">
+            <textarea id="taskPrompt" rows="1" spellcheck="false" data-i18n-placeholder="placeholder.prompt"></textarea>
+            <div class="composer-actions">
+              <button id="openTerminalBtn" class="small-button" type="button" data-i18n="action.openTerminal">Terminal</button>
+              <button id="providerTestBtn" class="small-button" type="button" data-i18n="action.testModel">Test model</button>
+              <button id="sendBtn" class="send-button" type="submit" aria-label="Send">&uarr;</button>
+            </div>
+          </form>
+        </section>
+      </section>
+
+      <aside id="drawer" class="drawer" aria-label="DreamSeed drawer">
+        <header class="drawer-head">
+          <div>
+            <span id="drawerKicker" class="context-line">Panel</span>
+            <h2 id="drawerTitle">Details</h2>
+          </div>
+          <button id="closeDrawerBtn" class="close-button" type="button" aria-label="Close">x</button>
+        </header>
+
+        <section id="panel-models" class="drawer-panel active">
+          <div class="model-summary-row">
+            <div>
+              <span class="context-line" data-i18n="drawer.models">Models</span>
+              <strong id="modelCountLabel">0</strong>
+            </div>
+            <small id="modelConfigLabel" class="model-config-label"></small>
+          </div>
+          <div class="model-toolbar">
+            <button id="newModelBtn" class="small-button" type="button" data-i18n="action.newModel">New model</button>
+            <button id="diagnoseModelBtn" class="small-button" type="button" data-i18n="action.diagnose">Diagnose</button>
+            <button id="saveModelBtn" class="small-button primary" type="button" data-i18n="action.save">Save</button>
+          </div>
+          <div id="modelList" class="model-list"></div>
+          <form id="modelForm" class="model-form" autocomplete="off">
+            <label><span data-i18n="field.name">Name</span><input id="modelNameInput" spellcheck="false" /></label>
+            <label><span data-i18n="field.model">Model ID</span><input id="modelIdInput" spellcheck="false" /></label>
+            <label><span data-i18n="field.baseUrl">Base URL</span><input id="baseUrlInput" spellcheck="false" /></label>
+            <label><span data-i18n="field.apiKey">API Key</span><input id="apiKeyInput" type="password" spellcheck="false" /></label>
+            <label><span data-i18n="field.apiKeyEnv">API Key Env</span><input id="apiKeyEnvInput" spellcheck="false" /></label>
+            <label><span data-i18n="field.chatPath">Chat Path</span><input id="chatPathInput" spellcheck="false" value="/v1/chat/completions" /></label>
+            <label><span data-i18n="field.timeout">Timeout ms</span><input id="timeoutInput" type="number" min="1000" step="1000" value="120000" /></label>
+            <label class="checkline"><input id="agentCapableInput" type="checkbox" checked /> <span data-i18n="field.agentCapable">Allow tool calling</span></label>
+            <textarea id="systemPrefixInput" rows="2" spellcheck="false"></textarea>
+            <div class="model-actions">
+              <button id="activateModelBtn" class="small-button" type="button" data-i18n="action.use">Use</button>
+              <button id="deleteModelBtn" class="small-button danger" type="button" data-i18n="action.delete">Delete</button>
+            </div>
+          </form>
+        </section>
+
+        <section id="panel-terminal" class="drawer-panel">
+          <form id="terminalForm" class="terminal-form">
+            <input id="terminalCommandInput" spellcheck="false" autocomplete="off" data-i18n-placeholder="placeholder.terminal" />
+            <button id="terminalRunBtn" class="small-button primary" type="submit" data-i18n="action.run">Run</button>
+          </form>
+          <pre id="terminalOutput" class="output-pane"></pre>
+        </section>
+
+        <section id="panel-changes" class="drawer-panel">
+          <div class="segmented">
+            <button class="seg-button active" type="button" data-diff-mode="status">Status</button>
+            <button class="seg-button" type="button" data-diff-mode="diff">Diff</button>
+            <button class="seg-button" type="button" data-diff-mode="stat">Stat</button>
+            <button id="refreshChangesBtn" class="seg-button" type="button" data-i18n="action.refresh">Refresh</button>
+          </div>
+          <div id="changedFileList" class="changed-file-list"></div>
+          <pre id="changesOutput" class="output-pane diff-output"></pre>
+        </section>
+
+        <section id="panel-health" class="drawer-panel">
+          <div class="doctor-grid">
+            <button class="doctor-card" data-doctor="context" type="button"><strong data-i18n="doctor.context">Context</strong><span data-i18n="doctor.contextSub">Prompt and compaction pressure</span></button>
+            <button class="doctor-card" data-doctor="kernel" type="button"><strong data-i18n="doctor.kernel">Kernel</strong><span data-i18n="doctor.kernelSub">Startup and compact state</span></button>
+            <button class="doctor-card" data-doctor="mcp" type="button"><strong data-i18n="doctor.mcp">MCP</strong><span data-i18n="doctor.mcpSub">Tool registry and risks</span></button>
+            <button class="doctor-card" data-doctor="hooks" type="button"><strong data-i18n="doctor.hooks">Hooks</strong><span data-i18n="doctor.hooksSub">Safety and memory pipeline</span></button>
+            <button class="doctor-card" data-doctor="memory" type="button"><strong data-i18n="doctor.memory">Memory</strong><span data-i18n="doctor.memorySub">Candidate review status</span></button>
+            <button class="doctor-card" data-doctor="evolve" type="button"><strong data-i18n="doctor.evolve">Evolve</strong><span data-i18n="doctor.evolveSub">Proposal queue</span></button>
+          </div>
+          <pre id="healthOutput" class="output-pane"></pre>
+        </section>
+      </aside>
+    </main>
+
+    <div id="approvalModal" class="modal-backdrop" hidden>
+      <section class="approval-dialog" role="dialog" aria-modal="true" aria-labelledby="approvalTitle">
+        <div>
+          <span class="context-line" data-i18n="approval.kicker">Approval gate</span>
+          <h2 id="approvalTitle" data-i18n="approval.title">Approval required</h2>
+        </div>
+        <p id="approvalBody" class="approval-body"></p>
+        <pre id="approvalCommand" class="approval-command"></pre>
+        <div id="approvalReasons" class="approval-reasons"></div>
+        <div class="approval-actions">
+          <button id="approvalCancelBtn" class="small-button" type="button" data-i18n="action.cancel">Cancel</button>
+          <button id="approvalApproveBtn" class="small-button primary" type="button" data-i18n="action.approve">Approve</button>
+        </div>
+      </section>
+    </div>
+
+    <script src="./desktop.js" type="module"></script>
+  </body>
+</html>

@@ -143,6 +143,18 @@ Invoke-SmokeStep "dreamseed doctor hooks" {
   $Output
 }
 
+Invoke-SmokeStep "dreamseed doctor kernel" {
+  $Output = & $DreamSeed doctor kernel --json
+  $Json = $Output -join "`n" | ConvertFrom-Json
+  if (-not $Json.ok) {
+    throw "kernel doctor is not ok"
+  }
+  if ($Json.effectiveDefault -ne "compat") {
+    throw "kernel effective default expected compat, got $($Json.effectiveDefault)"
+  }
+  $Output
+}
+
 Invoke-SmokeStep "dreamseed approval status" {
   $Output = & $DreamSeed approval status --json
   $Json = $Output -join "`n" | ConvertFrom-Json
@@ -223,6 +235,52 @@ Invoke-SmokeStep "dreamseed provider latency" {
   $Json = $Output -join "`n" | ConvertFrom-Json
   if (-not $Json.ok) {
     throw "provider latency failed: $($Json.error)"
+  }
+  $Output
+}
+
+Invoke-SmokeStep "dreamseed desktop smoke" {
+  $Output = & $DreamSeed desktop --smoke
+  $Text = $Output -join "`n"
+  $JsonStart = $Text.IndexOf("{")
+  if ($JsonStart -lt 0) {
+    throw "desktop smoke did not return JSON"
+  }
+  $Json = $Text.Substring($JsonStart) | ConvertFrom-Json
+  if (-not $Json.ok) {
+    throw "desktop smoke is not ok"
+  }
+  if (-not $Json.electron) {
+    throw "desktop smoke did not report Electron"
+  }
+  if (-not $Json.history) {
+    throw "desktop smoke did not report history wiring"
+  }
+  if ($Json.history.checked -and ([int]$Json.history.sessions -lt 1)) {
+    throw "desktop smoke checked history but found no sessions"
+  }
+  $Output
+}
+
+Invoke-SmokeStep "dreamseed desktop render smoke" {
+  $Output = & $DreamSeed desktop --render-smoke
+  $Text = $Output -join "`n"
+  $JsonStart = $Text.IndexOf("{")
+  if ($JsonStart -lt 0) {
+    throw "desktop render smoke did not return JSON"
+  }
+  $Json = $Text.Substring($JsonStart) | ConvertFrom-Json
+  if (-not $Json.ok) {
+    throw "desktop render smoke is not ok: $($Json.failures -join '; ')"
+  }
+  if (-not $Json.report.appShell.exists) {
+    throw "desktop render smoke did not find app shell"
+  }
+  if ([int]$Json.report.projectGroups -lt 2) {
+    throw "desktop render smoke did not render project-grouped history"
+  }
+  if ([int]$Json.report.messages -lt 1) {
+    throw "desktop render smoke did not render chat messages"
   }
   $Output
 }

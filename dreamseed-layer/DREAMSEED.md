@@ -28,22 +28,26 @@ npm install -g .
 dreamseed --help
 ```
 
-The repository includes a lite source kernel, so `dreamseed --print "hello"`
-can work after a provider is configured. Full tool/MCP execution still uses a
-compatible runtime kernel.
-
-If a compatible runtime exists:
+DreamSeed now uses a compatible runtime as its only execution kernel. Configure
+one local runtime, then run `dreamseed --print "hello"` or enter the normal
+interactive session.
 
 ```powershell
-$env:DREAMSEED_KERNEL_JS = "<path-to-compatible-kernel.js>"
+$env:DREAMSEED_COMPAT_KERNEL_JS = "<path-to-compatible-kernel.js>"
 node bin\dreamseed-agent.js --help
 ```
 
 or use an installed compatible command:
 
 ```powershell
-$env:DREAMSEED_KERNEL_CLI = "compatible-agent"
+$env:DREAMSEED_COMPAT_KERNEL_CLI = "compatible-agent"
 node bin\dreamseed-agent.js
+```
+
+Inspect the compatible-runtime route and known slow-path graph:
+
+```powershell
+dreamseed doctor kernel
 ```
 
 ## Provider Bridge

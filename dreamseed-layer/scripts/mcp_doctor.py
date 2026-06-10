@@ -282,6 +282,8 @@ def normalize_server_entry(entry: dict[str, Any]) -> dict[str, Any]:
 def has_inline_secret(data: Any) -> bool:
     text = json.dumps(data, ensure_ascii=False)
     lowered = text.lower()
+    if any(marker in text for marker in ("ghp_", "github_pat_", "sk-")):
+        return True
     return any(marker in lowered for marker in ("api_key", "apikey", "password", "bearer ")) and "env" not in lowered
 
 
