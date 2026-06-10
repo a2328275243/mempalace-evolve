@@ -7,7 +7,7 @@ This demo shows the full lifecycle:
 
 Run:
     pip install mempalace-evolve[langchain] langchain-openai
-    export OPENAI_API_KEY=sk-...
+    export OPENAI_API_KEY=YOUR_OPENAI_API_KEY
     python langchain_agent.py
 """
 

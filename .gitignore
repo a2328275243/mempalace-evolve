@@ -37,6 +37,8 @@ Thumbs.db
 /self-evolve-candidates/
 /self-evolve-backups/
 /legacy-history/
+/dreamseed-layer/
+/dreamseed_layer/
 providers.local.json
 *.log
 *.database

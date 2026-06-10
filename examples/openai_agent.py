@@ -2,7 +2,7 @@
 
 Run:
     pip install openai mempalace-evolve
-    export OPENAI_API_KEY=sk-...
+    export OPENAI_API_KEY=YOUR_OPENAI_API_KEY
     python openai_agent.py
 """
 
