@@ -1,6 +1,6 @@
 param(
   [string]$InstallPath = "",
-  [string]$PackageUrl = "https://github.com/a2328275243/mempalace-evolve/raw/master/installers/DreamSeed-Code-0.1.0-Windows-x64.zip",
+  [string]$PackageUrl = "https://github.com/a2328275243/mempalace-evolve/raw/master/installers/DreamSeed-Code-0.1.1-Windows-x64.zip",
   [string]$ManifestUrl = "https://github.com/a2328275243/mempalace-evolve/raw/master/installers/dreamseed-update-manifest.json",
   [switch]$NoDesktopShortcut
 )
@@ -52,7 +52,7 @@ function Resolve-Package {
   )
 
   $ScriptRoot = Get-ScriptRoot
-  $LocalPackage = Join-Path $ScriptRoot "installers\DreamSeed-Code-0.1.0-Windows-x64.zip"
+  $LocalPackage = Join-Path $ScriptRoot "installers\DreamSeed-Code-0.1.1-Windows-x64.zip"
   if (Test-Path -LiteralPath $LocalPackage) {
     $LocalPackageInfo = Get-Item -LiteralPath $LocalPackage
     if ($LocalPackageInfo.Length -gt 1048576) {
@@ -73,7 +73,11 @@ function Assert-PackageHash {
     [string]$Manifest
   )
   try {
-    $Data = Invoke-RestMethod -UseBasicParsing -Uri $Manifest
+    $Data = if (Test-Path -LiteralPath $Manifest) {
+      Get-Content -LiteralPath $Manifest -Raw | ConvertFrom-Json
+    } else {
+      Invoke-RestMethod -UseBasicParsing -Uri $Manifest
+    }
     $Expected = [string]$Data.package.sha256
     if (-not $Expected) { return }
     $Actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $PackagePath).Hash.ToLowerInvariant()
