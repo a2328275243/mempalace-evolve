@@ -54,7 +54,11 @@ function Resolve-Package {
   $ScriptRoot = Get-ScriptRoot
   $LocalPackage = Join-Path $ScriptRoot "installers\DreamSeed-Code-0.1.0-Windows-x64.zip"
   if (Test-Path -LiteralPath $LocalPackage) {
-    return [System.IO.Path]::GetFullPath($LocalPackage)
+    $LocalPackageInfo = Get-Item -LiteralPath $LocalPackage
+    if ($LocalPackageInfo.Length -gt 1048576) {
+      return [System.IO.Path]::GetFullPath($LocalPackage)
+    }
+    Write-Host "Local package is incomplete or a Git LFS pointer; downloading the full package." -ForegroundColor Yellow
   }
 
   $PackagePath = Join-Path $TempRoot "DreamSeed-Code-Windows-x64.zip"
