@@ -108,6 +108,10 @@ mempalace serve --port 8765
 DreamSeed-Setup-Windows.cmd
 ```
 
+不需要提前安装 Node.js。DreamSeed Code 的桌面端和终端端运行时已经包含在安装包里。
+
+安装器会检查 Python 3.10+ 和 Git Bash。缺少时会尝试通过 Windows 自带的 `winget` 安装 Python 3.12 和 Git for Windows；如果网络、权限或系统策略拦截了自动安装，DreamSeed 仍会先安装完成，你按提示手动安装 Python / Git 后重新运行一次安装器即可。
+
 请让 `DreamSeed-Setup-Windows.cmd` 和 `DreamSeed-Setup-Windows.ps1` 保持在同一个文件夹里。安装器会让你选择安装路径，并自动安装桌面端和终端端。
 
 安装完成后：
