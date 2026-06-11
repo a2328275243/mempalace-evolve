@@ -21,6 +21,22 @@ function Get-ScriptRoot {
   return Split-Path -Parent $MyInvocation.MyCommand.Path
 }
 
+function Resolve-PowerShell {
+  $Candidates = @(
+    $env:DREAMSEED_POWERSHELL,
+    (Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"),
+    (Join-Path $env:SystemRoot "Sysnative\WindowsPowerShell\v1.0\powershell.exe"),
+    "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
+    "powershell.exe"
+  )
+  foreach ($Candidate in $Candidates) {
+    if (-not $Candidate) { continue }
+    if ($Candidate -eq "powershell.exe") { return $Candidate }
+    if (Test-Path -LiteralPath $Candidate) { return $Candidate }
+  }
+  return "powershell.exe"
+}
+
 function Get-DownloadProxy {
   if ($Proxy) { return $Proxy }
   if ($env:DREAMSEED_DOWNLOAD_PROXY) { return $env:DREAMSEED_DOWNLOAD_PROXY }
@@ -206,7 +222,8 @@ try {
   if ($NoDesktopShortcut) {
     $Args += "-NoDesktopShortcut"
   }
-  & powershell.exe @Args
+  $PowerShell = Resolve-PowerShell
+  & $PowerShell @Args
 
   Write-Host ""
   Write-Host "DreamSeed Code installed successfully." -ForegroundColor Green

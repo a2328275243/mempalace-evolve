@@ -108,11 +108,7 @@ mempalace serve --port 8765
 DreamSeed-Code-0.1.1-Setup.exe
 ```
 
-这是离线一体安装器，桌面端和终端端会一起安装。安装过程中不需要再下载 200MB 以上的 DreamSeed Code 主程序。
-
-不需要提前安装 Node.js。DreamSeed Code 的桌面端和终端端运行时已经包含在安装器里。
-
-安装器会检查 Python 3.10+ 和 Git Bash。缺少时会尝试通过 Windows 自带的 `winget` 安装 Python 3.12 和 Git for Windows；如果网络、权限或系统策略拦截了自动安装，DreamSeed 仍会先安装完成，你按提示手动安装 Python / Git 后重新运行一次安装器即可。
+安装完成后，桌面端和终端命令会一起可用。
 
 如果你下载的是整个仓库，也可以运行备用安装入口：
 
