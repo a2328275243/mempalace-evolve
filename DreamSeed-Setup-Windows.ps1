@@ -1,12 +1,14 @@
 param(
   [string]$InstallPath = "",
-  [string]$PackageUrl = "https://github.com/a2328275243/mempalace-evolve/raw/master/installers/DreamSeed-Code-0.1.1-Windows-x64.zip",
+  [string]$PackageUrl = "https://github.com/a2328275243/mempalace-evolve/releases/download/dreamseed-code-v0.1.1/DreamSeed-Code-0.1.1-Windows-x64.zip",
   [string]$ManifestUrl = "https://github.com/a2328275243/mempalace-evolve/raw/master/installers/dreamseed-update-manifest.json",
+  [string]$Proxy = "",
   [switch]$NoDesktopShortcut
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+$ProgressPreference = "SilentlyContinue"
 
 function Write-Step {
   param([string]$Message)
@@ -17,6 +19,70 @@ function Write-Step {
 function Get-ScriptRoot {
   if ($PSScriptRoot) { return $PSScriptRoot }
   return Split-Path -Parent $MyInvocation.MyCommand.Path
+}
+
+function Get-DownloadProxy {
+  if ($Proxy) { return $Proxy }
+  if ($env:DREAMSEED_DOWNLOAD_PROXY) { return $env:DREAMSEED_DOWNLOAD_PROXY }
+  if ($env:HTTPS_PROXY) { return $env:HTTPS_PROXY }
+  if ($env:HTTP_PROXY) { return $env:HTTP_PROXY }
+  return ""
+}
+
+function Get-PackageUrls {
+  param([string]$PrimaryUrl)
+  $Urls = @()
+  if ($PrimaryUrl) { $Urls += $PrimaryUrl }
+  $Urls += "https://github.com/a2328275243/mempalace-evolve/raw/master/installers/DreamSeed-Code-0.1.1-Windows-x64.zip"
+  $Urls | Where-Object { $_ } | Select-Object -Unique
+}
+
+function Test-CompletePackage {
+  param([string]$Path)
+  if (-not $Path -or -not (Test-Path -LiteralPath $Path)) { return $false }
+  $Info = Get-Item -LiteralPath $Path
+  return $Info.Length -gt 104857600
+}
+
+function Invoke-DreamSeedDownload {
+  param(
+    [string]$Url,
+    [string]$Destination
+  )
+  $DownloadProxy = Get-DownloadProxy
+  $Curl = Get-Command curl.exe -ErrorAction SilentlyContinue
+  if ($Curl) {
+    $CurlArgs = @("-L", "--fail", "--retry", "5", "--connect-timeout", "20", "-C", "-", "-o", $Destination)
+    if ($DownloadProxy) { $CurlArgs += @("--proxy", $DownloadProxy) }
+    $CurlArgs += $Url
+    Write-Host "Downloading with curl.exe. If this is slow, set HTTPS_PROXY or DREAMSEED_DOWNLOAD_PROXY." -ForegroundColor Cyan
+    & $Curl.Source @CurlArgs
+    if ($LASTEXITCODE -eq 0 -and (Test-CompletePackage -Path $Destination)) { return }
+    Write-Host "curl.exe download did not complete; trying the next downloader." -ForegroundColor Yellow
+  }
+
+  if (Get-Command Start-BitsTransfer -ErrorAction SilentlyContinue) {
+    try {
+      Write-Host "Downloading with BITS transfer." -ForegroundColor Cyan
+      $BitsArgs = @{ Source = $Url; Destination = $Destination; ErrorAction = "Stop" }
+      if ($DownloadProxy) { Write-Host "BITS uses the Windows proxy settings; explicit proxy is only used by curl/PowerShell." -ForegroundColor Yellow }
+      Start-BitsTransfer @BitsArgs
+      if (Test-CompletePackage -Path $Destination) { return }
+    } catch {
+      Write-Host "BITS download failed: $($_.Exception.Message)" -ForegroundColor Yellow
+    }
+  }
+
+  Write-Host "Downloading with PowerShell web request." -ForegroundColor Cyan
+  $WebArgs = @{ UseBasicParsing = $true; Uri = $Url; OutFile = $Destination; TimeoutSec = 900 }
+  if ($DownloadProxy) {
+    $WebArgs.Proxy = $DownloadProxy
+    $WebArgs.ProxyUseDefaultCredentials = $true
+  }
+  Invoke-WebRequest @WebArgs
+  if (-not (Test-CompletePackage -Path $Destination)) {
+    throw "Downloaded package is incomplete. Check network/proxy, then rerun the installer; partial curl downloads can resume."
+  }
 }
 
 function Select-InstallPath {
@@ -53,18 +119,25 @@ function Resolve-Package {
 
   $ScriptRoot = Get-ScriptRoot
   $LocalPackage = Join-Path $ScriptRoot "installers\DreamSeed-Code-0.1.1-Windows-x64.zip"
+  if (Test-CompletePackage -Path $LocalPackage) {
+    return [System.IO.Path]::GetFullPath($LocalPackage)
+  }
   if (Test-Path -LiteralPath $LocalPackage) {
-    $LocalPackageInfo = Get-Item -LiteralPath $LocalPackage
-    if ($LocalPackageInfo.Length -gt 1048576) {
-      return [System.IO.Path]::GetFullPath($LocalPackage)
-    }
     Write-Host "Local package is incomplete or a Git LFS pointer; downloading the full package." -ForegroundColor Yellow
   }
 
   $PackagePath = Join-Path $TempRoot "DreamSeed-Code-Windows-x64.zip"
-  Write-Host "Downloading DreamSeed Code package from $Url"
-  Invoke-WebRequest -UseBasicParsing -Uri $Url -OutFile $PackagePath
-  return $PackagePath
+  foreach ($CandidateUrl in Get-PackageUrls -PrimaryUrl $Url) {
+    try {
+      Write-Host "Downloading DreamSeed Code package from $CandidateUrl"
+      Invoke-DreamSeedDownload -Url $CandidateUrl -Destination $PackagePath
+      return $PackagePath
+    } catch {
+      Write-Host "Download failed: $($_.Exception.Message)" -ForegroundColor Yellow
+      Remove-Item -LiteralPath $PackagePath -Force -ErrorAction SilentlyContinue
+    }
+  }
+  throw "DreamSeed package download failed. Put DreamSeed-Code-0.1.1-Windows-x64.zip under the installers folder, or rerun with -Proxy http://127.0.0.1:7897."
 }
 
 function Assert-PackageHash {

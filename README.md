@@ -102,17 +102,25 @@ mempalace serve --port 8765
 
 ## 安装 DreamSeed Code
 
-普通 Windows 用户不用手动安装 DreamSeed 源码。下载仓库后，双击运行：
+普通 Windows 用户不用手动安装 DreamSeed 源码。打开 GitHub Releases，下载并双击：
+
+```powershell
+DreamSeed-Code-0.1.1-Setup.exe
+```
+
+这是离线一体安装器，桌面端和终端端会一起安装。安装过程中不需要再下载 200MB 以上的 DreamSeed Code 主程序。
+
+不需要提前安装 Node.js。DreamSeed Code 的桌面端和终端端运行时已经包含在安装器里。
+
+安装器会检查 Python 3.10+ 和 Git Bash。缺少时会尝试通过 Windows 自带的 `winget` 安装 Python 3.12 和 Git for Windows；如果网络、权限或系统策略拦截了自动安装，DreamSeed 仍会先安装完成，你按提示手动安装 Python / Git 后重新运行一次安装器即可。
+
+如果你下载的是整个仓库，也可以运行备用安装入口：
 
 ```powershell
 DreamSeed-Setup-Windows.cmd
 ```
 
-不需要提前安装 Node.js。DreamSeed Code 的桌面端和终端端运行时已经包含在安装包里。
-
-安装器会检查 Python 3.10+ 和 Git Bash。缺少时会尝试通过 Windows 自带的 `winget` 安装 Python 3.12 和 Git for Windows；如果网络、权限或系统策略拦截了自动安装，DreamSeed 仍会先安装完成，你按提示手动安装 Python / Git 后重新运行一次安装器即可。
-
-请让 `DreamSeed-Setup-Windows.cmd` 和 `DreamSeed-Setup-Windows.ps1` 保持在同一个文件夹里。安装器会让你选择安装路径，并自动安装桌面端和终端端。
+备用安装入口会优先使用 `installers` 文件夹里的完整安装包；如果只有 Git LFS 指针文件，它才会联网下载。
 
 安装完成后：
 

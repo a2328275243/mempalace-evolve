@@ -1,1 +1,2 @@
 installers/*.zip filter=lfs diff=lfs merge=lfs -text
+installers/*.exe filter=lfs diff=lfs merge=lfs -text
