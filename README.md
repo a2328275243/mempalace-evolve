@@ -111,11 +111,13 @@ DreamSeed-Setup-Windows.cmd
 安装器会做这些事：
 
 1. 让用户选择安装路径。
-2. 安装 DreamSeed 内置的 MemPalace 记忆能力，包括 MCP/API 运行支持。
-3. 释放 DreamSeed Code 安装包。
-4. 安装桌面端依赖。
-5. 创建 `dreamseed` 终端命令。
-6. 在桌面创建 `DreamSeed Desktop` 快捷方式。
+2. 解压 DreamSeed Code 一体化 Windows 包。
+3. 安装同一套桌面端和终端端运行时。
+4. 创建 `dreamseed` 终端命令。
+5. 在桌面创建 `DreamSeed Desktop` 快捷方式。
+6. 保留本地模型配置、历史、记忆、日志和密钥在用户自己的 `%LOCALAPPDATA%\DreamSeed` 下。
+
+DreamSeed Code 的桌面端和终端端是一体的。桌面快捷方式和 `dreamseed` 命令使用同一个本地运行时、同一套模型配置、同一份历史记录和同一个 MemPalace 记忆系统。
 
 安装完成后：
 
@@ -125,9 +127,17 @@ dreamseed
 
 或者直接双击桌面上的 `DreamSeed Desktop`。
 
+以后更新 DreamSeed Code：
+
+```powershell
+dreamseed update
+```
+
+更新会下载新的公开安装包并覆盖程序文件，但不会覆盖用户自己的模型 key、provider 配置、历史记录、MemPalace 记忆、候选记忆、日志和缓存。
+
 ## DreamSeed Code 包含什么
 
-DreamSeed Code 是我的自制智能体。用户通过安装器使用它，不需要知道内部目录结构。
+DreamSeed Code 是我的自制智能体。用户通过安装器使用它，不需要下载公开源码目录。
 
 它包含：
 
