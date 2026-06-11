@@ -102,22 +102,13 @@ mempalace serve --port 8765
 
 ## 安装 DreamSeed Code
 
-普通用户不需要下载 DreamSeed 源码目录。直接下载并运行安装器：
+普通 Windows 用户不用手动安装 DreamSeed 源码。下载仓库后，双击运行：
 
 ```powershell
 DreamSeed-Setup-Windows.cmd
 ```
 
-安装器会做这些事：
-
-1. 让用户选择安装路径。
-2. 解压 DreamSeed Code 一体化 Windows 包。
-3. 安装同一套桌面端和终端端运行时。
-4. 创建 `dreamseed` 终端命令。
-5. 在桌面创建 `DreamSeed Desktop` 快捷方式。
-6. 保留本地模型配置、历史、记忆、日志和密钥在用户自己的 `%LOCALAPPDATA%\DreamSeed` 下。
-
-DreamSeed Code 的桌面端和终端端是一体的。桌面快捷方式和 `dreamseed` 命令使用同一个本地运行时、同一套模型配置、同一份历史记录和同一个 MemPalace 记忆系统。
+请让 `DreamSeed-Setup-Windows.cmd` 和 `DreamSeed-Setup-Windows.ps1` 保持在同一个文件夹里。安装器会让你选择安装路径，并自动安装桌面端和终端端。
 
 安装完成后：
 
@@ -126,6 +117,8 @@ dreamseed
 ```
 
 或者直接双击桌面上的 `DreamSeed Desktop`。
+
+DreamSeed Code 的桌面端和终端端是一体的：模型配置、项目历史、`/resume` 和 MemPalace 记忆系统使用同一份本地数据。
 
 以后更新 DreamSeed Code：
 
@@ -161,19 +154,3 @@ memory-candidates -> reviewed -> promote-reviewed -> MemPalace
 ```
 
 稳定偏好、项目决策、错误模式更容易留下；临时调试、空回答、长日志和泛泛 checkpoint 会被降权或拒绝。
-
-## 本地隐私
-
-这些内容默认不会上传到仓库：
-
-- 模型密钥和私有 provider 配置
-- legacy history
-- memory candidates
-- self-evolve candidates
-- logs
-- cache
-- 本地数据库文件
-
-## License
-
-MIT. See [LICENSE](LICENSE).
