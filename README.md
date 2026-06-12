@@ -1,8 +1,20 @@
+<!--
+╔══════════════════════════════════════════════════════════════════════╗
+║  DreamSeed 种梦计划 — AI创造者大赛  官方 README 模板                ║
+║                                                                      ║
+║  使用说明：                                                          ║
+║  1. 将本模板放在参赛仓库根目录 README.md 的顶部                       ║
+║  2. 头图使用 DreamField 官方公开活动图片地址                         ║
+║  3. 请保留 DREAMFIELD_README_HEADER_START / END 标识                 ║
+║  4. 分割线以下供创作者自由编写项目内容                               ║
+╚══════════════════════════════════════════════════════════════════════╝
+-->
+
 <!-- DREAMFIELD_README_HEADER_START -->
 
 <p align="center">
   <a href="https://www.dreamfield.top">
-    <img src="https://www.dreamfield.top/dream-field/contest-readme/assets/dreamseed-readme-banner.png" alt="DreamSeed 参赛作品" width="100%" />
+    <img src="https://www.dreamfield.top/dream-field/contest-readme/assets/dreamseed-readme-banner.png" alt="DreamSeed 种梦计划参赛作品" width="100%" />
   </a>
 </p>
 
@@ -142,4 +154,3 @@ memory-candidates -> reviewed -> promote-reviewed -> MemPalace
 ```
 
 稳定偏好、项目决策、错误模式更容易保留；临时调试、空回复、长日志和泛泛 checkpoint 会被降权或拒绝。
-
