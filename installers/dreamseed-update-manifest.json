@@ -1,18 +1,18 @@
 {
   "version": "0.1.1",
-  "releasedAt": "2026-06-12T06:00:28.286Z",
+  "releasedAt": "2026-06-13T05:10:39.256Z",
   "package": {
     "type": "windows-x64-zip",
     "url": "https://github.com/a2328275243/mempalace-evolve/releases/download/dreamseed-code-v0.1.1/DreamSeed-Code-0.1.1-Windows-x64.zip",
-    "sha256": "ab514ad2a5ef02fb00a02b3f9ec5af817c9aa2b8f091d0e184b10d0d3c3e0e06",
-    "size": 242110089
+    "sha256": "d10cf57083315083181348b5145a0f451d2e353665b3459b28d04c25d9c508df",
+    "size": 249453560
   },
   "preservesLocalData": true,
   "localDataRoot": "%LOCALAPPDATA%\\DreamSeed",
   "setup": {
     "type": "windows-iexpress-exe",
     "url": "https://github.com/a2328275243/mempalace-evolve/releases/download/dreamseed-code-v0.1.1/DreamSeed-Code-0.1.1-Setup.exe",
-    "sha256": "d20e2011191d305a8b8f2c82e4093bafb8ca097d4f14e2081c34f13e5c2d877f",
-    "size": 241643520
+    "sha256": "1f0f390d26bf22c59b1dfb5343cd1588b50ae9625d9c99374cbc5c92c71d8084",
+    "size": 248954880
   }
 }
