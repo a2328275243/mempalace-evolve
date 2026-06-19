@@ -30,7 +30,6 @@ Thumbs.db
 .claude/
 # =========================================================================
 # DreamSeed & MemPalace 安全防泄露白名单/黑名单
-# =========================================================================
 /.dreamseed/
 /.dreamseed-memory/
 /memory-candidates/
@@ -43,6 +42,43 @@ providers.local.json
 *.log
 *.database
 LOCAL-KIT.md
-
 !dreamseed-layer/.dreamseed/
 !dreamseed-layer/.dreamseed/**
+﻿# Local compatibility runtime artifacts. DreamSeed publishes split source, not bundled kernels.
+package/
+*.tgz
+# Generated release artifacts.
+*.zip
+# Local memory and caches.
+.dreamseed-memory/
+.dreamseed-runtime/
+legacy-history/
+memory-candidates/
+self-evolve-candidates/
+self-evolve-backups/
+.cache/
+*.pyc
+node_modules/
+# Logs and transient diagnostics.
+logs/
+logs/hook-trace/
+debug/
+tmp/
+temp/
+# Local overrides and secrets.
+.env.*
+!.env.example
+config/providers.local.json
+config/history.meta.json
+config/desktop.local.json
+.dreamseed/providers.local.json
+.dreamseed/settings.local.json
+DREAMSEED.local.md
+package-lock.json
+# Runtime caches
+fastmcp/version_cache.json
+fastmcp/
+# Local kernel backups (never publish)
+bin/*.bak*
+*.bak-p11*
+bin/*.bak-p11e*

@@ -1,0 +1,81 @@
+{
+  "version": 1,
+  "mode": "auto-review",
+  "description": "DreamSeed local risk approval policy. Low and medium-risk permission requests are auto-approved; high-risk requests fall through to the native approval prompt; critical requests are denied.",
+  "decisions": {
+    "low": "allow",
+    "medium": "allow",
+    "high": "ask",
+    "critical": "deny"
+  },
+  "lowRiskTools": [
+    "Read",
+    "Grep",
+    "Glob",
+    "LS",
+    "TodoWrite",
+    "TaskOutput"
+  ],
+  "mediumRiskTools": [
+    "Write",
+    "Edit",
+    "MultiEdit",
+    "NotebookEdit",
+    "WebFetch",
+    "WebSearch"
+  ],
+  "highRiskTools": [
+    "Bash",
+    "Shell",
+    "ComputerUse",
+    "Browser",
+    "Desktop",
+    "MCP"
+  ],
+  "safeShellPatterns": [
+    "(?i)^\\s*(pwd|cd\\s*$|dir\\s*$|ls(\\s|$)|echo\\s+[^>|&;]+$)",
+    "(?i)^\\s*(rg|grep|findstr|select-string)\\b",
+    "(?i)^\\s*(get-childitem|get-content|resolve-path|test-path|get-command|where\\.exe|where)\\b",
+    "(?i)^\\s*git\\s+(status|diff|log|show|branch)\\b",
+    "(?i)^\\s*(node|npm|python|py)\\s+(--version|-v|version)\\s*$",
+    "(?i)^\\s*dreamseed\\s+(--help|provider\\s+status|history\\s+status|evolve\\s+status|doctor\\s+(context|mcp|hooks)|usage\\s+summary|memory\\s+audit|mcp\\s+list)\\b"
+  ],
+  "askShellPatterns": [
+    "(?i)\\b(remove-item|rm|del|erase|rmdir|move-item|rename-item|copy-item|set-content|add-content|out-file|new-item)\\b",
+    "(?i)\\b(git\\s+(add|commit|push|reset|clean|checkout|switch|merge|rebase|stash|tag))\\b",
+    "(?i)\\b(npm|pnpm|yarn|bun)\\s+(install|add|remove|update|publish|link|unlink|audit\\s+fix)\\b",
+    "(?i)\\b(pip|pip3)\\s+install\\b|\\bpython\\s+-m\\s+pip\\s+install\\b|\\bpy\\s+-3\\s+-m\\s+pip\\s+install\\b",
+    "(?i)\\b(curl|wget|invoke-webrequest|invoke-restmethod)\\b",
+    "(?i)\\b(stop-process|taskkill|start-process|chmod|icacls|takeown|sc\\s+|net\\s+stop|net\\s+start)\\b",
+    "(?i)\\b(reg\\s+(add|delete|import)|setx|set-itemproperty)\\b",
+    "(?i)(^|\\s)(>|>>|2>|2>>|tee)\\s*[^\\s]+"
+  ],
+  "denyShellPatterns": [
+    "(?i)\\b(claude|claw)\\s+mcp\\b",
+    "(?i)\\b(format|shutdown|restart-computer|bcdedit)\\b",
+    "(?i)\\brm\\s+-rf\\s+(/|[A-Za-z]:\\\\?$)",
+    "(?i)\\bremove-item\\b.*\\b-recurse\\b.*\\b-force\\b.*\\b([A-Za-z]:\\\\?$|/)\\b",
+    "(?i)sk-[A-Za-z0-9_-]{20,}",
+    "(?i)(api[_-]?key|token|secret|password)\\s*[:=]\\s*['\"]?[^'\"\\s]{8,}"
+  ],
+  "privatePathPatterns": [
+    "(?i)(^|[\\\\/])providers\\.local\\.json$",
+    "(?i)(^|[\\\\/])legacy-history([\\\\/]|$)",
+    "(?i)(^|[\\\\/])memory-candidates([\\\\/]|$)",
+    "(?i)(^|[\\\\/])self-evolve-candidates([\\\\/]|$)",
+    "(?i)(^|[\\\\/])self-evolve-backups([\\\\/]|$)",
+    "(?i)(^|[\\\\/])\\.dreamseed-runtime([\\\\/]|$)"
+  ],
+  "systemPathPatterns": [
+    "(?i)^C:\\\\Windows([\\\\/]|$)",
+    "(?i)^C:\\\\Program Files( \\(x86\\))?([\\\\/]|$)",
+    "(?i)^C:\\\\Users\\\\[^\\\\/]+\\\\AppData([\\\\/]|$)",
+    "(?i)^D:\\\\C[l]aude[ ]Code([\\\\/]|$)",
+    "(?i)^D:\\\\DreamSeed-Old-ClaudeCode-Archive([\\\\/]|$)"
+  ],
+  "log": {
+    "enabled": true,
+    "directory": "logs/approval-gate",
+    "redactCommand": true
+  }
+}
