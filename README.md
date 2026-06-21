@@ -90,16 +90,25 @@ This gives you a `dreamseed` command that runs an interactive coding agent or a 
 
 ### Install
 
+Download the latest package from [DreamSeed Code v0.2.0](https://github.com/a2328275243/mempalace-evolve/releases/tag/dreamseed-code-v0.2.0), unzip it, then run:
+
 ```powershell
-git clone <this-repo>
-cd dreamseed-code-0.1.0
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install-dreamseed.ps1
+dreamseed --help
+```
+
+You can also install from the repository source:
+
+```powershell
+git clone https://github.com/a2328275243/mempalace-evolve.git
+cd mempalace-evolve
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install-dreamseed.ps1
 dreamseed --help
 ```
 
 The installer:
 - registers the `dreamseed` command on your PATH,
-- installs the Python deps including MemPalace from the bundled wheelhouse,
+- installs Python dependencies including MemPalace from the included source package,
 - creates `%APPDATA%\DreamSeed\` for private config and history (never published),
 - leaves your old shells' history untouched.
 
