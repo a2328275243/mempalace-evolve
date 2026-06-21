@@ -85,8 +85,8 @@ This gives you a `dreamseed` command that runs an interactive coding agent or a 
 ### Requirements
 
 - Windows (the install scripts are PowerShell; the kernel itself is cross-platform Node, but installation is currently Windows-first).
-- Node.js 18+.
-- Python 3.10+.
+- Internet access for the first install.
+- You do not have to install Node.js or Python first. The installer checks for Node.js 18+ and Python 3.10+, then tries to install Node.js LTS and Python 3.12 with Windows `winget` if either is missing.
 
 ### Install
 
@@ -108,9 +108,18 @@ dreamseed --help
 
 The installer:
 - registers the `dreamseed` command on your PATH,
+- checks Node.js 18+ and Python 3.10+,
+- tries `winget install OpenJS.NodeJS.LTS` and `winget install Python.Python.3.12` if a runtime is missing,
 - installs Python dependencies including MemPalace from the included source package,
+- runs `dreamseed --help` as a self-test,
 - creates `%APPDATA%\DreamSeed\` for private config and history (never published),
 - leaves your old shells' history untouched.
+
+If you do not want automatic runtime installation, pass `-NoAutoInstall` and install Node.js 18+ / Python 3.10+ yourself:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install-dreamseed.ps1 -NoAutoInstall
+```
 
 ### Add a model
 
