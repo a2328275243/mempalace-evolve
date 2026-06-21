@@ -247,7 +247,12 @@ function New-FullKitZip {
 
   $private = Get-ChildItem -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue |
     Where-Object {
-      $_.FullName -match '(providers\.local|legacy-history|memory-candidates|self-evolve-candidates|self-evolve-backups|\.dreamseed-memory|node_modules|\.git\\)'
+      $rel = [System.IO.Path]::GetRelativePath($stage, $_.FullName).Replace('/', '\')
+      $isBundledNodeRuntime = $rel -match '^vendor\\node\\win-x64\\node_modules(\\|$)'
+      $isPrivatePath = $rel -match '(^|\\)(providers\.local|legacy-history|memory-candidates|self-evolve-candidates|self-evolve-backups|\.dreamseed-memory)(\\|$)'
+      $isGitPath = $rel -match '(^|\\)\.git(\\|$)'
+      $isSourceNodeModules = ($rel -match '(^|\\)node_modules(\\|$)') -and (-not $isBundledNodeRuntime)
+      $isPrivatePath -or $isGitPath -or $isSourceNodeModules
     }
   if ($private) {
     $private | Select-Object FullName

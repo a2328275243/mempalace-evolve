@@ -5,6 +5,7 @@ import { rename } from "node:fs/promises";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
+import { emitKeypressEvents } from "node:readline";
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import os from "node:os";
@@ -87,6 +88,25 @@ let _mcpInitNotified = false;
 let _interactiveUi = false;
 const _mcpPendingChildren = new Set();
 let _shuttingDown = false;
+let _readingPrompt = false;
+let _keypressEventsEnabled = false;
+let _scriptPromptLines = null;
+let _scriptPromptIndex = 0;
+const _queuedUiNotices = [];
+let _assistantBlockOpen = false;
+let _assistantLineOpen = false;
+let _assistantLineWidth = 0;
+let _activeToolRows = 0;
+const SLASH_COMMANDS = [
+  { name: "/resume", usage: "/resume [id/search]", description: "Load imported legacy history" },
+  { name: "/status", usage: "/status", description: "Show session, token, MCP and hook status" },
+  { name: "/compact", usage: "/compact [notes]", description: "Compress current conversation context" },
+  { name: "/clear", usage: "/clear", description: "Clear current conversation" },
+  { name: "/model", usage: "/model", description: "Show active model" },
+  { name: "/help", usage: "/help", description: "Show help" },
+  { name: "/exit", usage: "/exit", description: "Exit DreamSeed" },
+  { name: "/quit", usage: "/quit", description: "Exit DreamSeed" },
+];
 
 // Fix P1 third-round: wrap entry in async main() so module-top-level finishes
 // initializing all const declarations (BUILTIN_TOOLS at L334, etc.) before
@@ -162,10 +182,12 @@ const ANSI = {
   reset: "\x1b[0m",
   dim: "\x1b[2m",
   bold: "\x1b[1m",
+  blue: "\x1b[34m",
   cyan: "\x1b[36m",
   green: "\x1b[32m",
   yellow: "\x1b[33m",
   red: "\x1b[31m",
+  reverse: "\x1b[7m",
 };
 function supportsAnsi() {
   return Boolean(output.isTTY) && process.env.NO_COLOR !== "1";
@@ -177,6 +199,203 @@ function uiColor(text, color) {
 function uiLine(text = "", color = "") {
   console.log(color ? uiColor(text, color) : text);
 }
+function uiWidth() {
+  return Math.max(72, Math.min(output.columns || 96, 120));
+}
+function useUnicodeUi() {
+  if (!output.isTTY || process.env.DREAMSEED_ASCII_UI === "1" || process.env.DREAMSEED_PLAIN_UI === "1") return false;
+  if (process.env.DREAMSEED_UNICODE_UI === "1") return true;
+  return true;
+}
+function uiGlyphs() {
+  if (useUnicodeUi()) {
+    return {
+      tl: "\u256D", tr: "\u256E", bl: "\u2570", br: "\u256F",
+      h: "\u2500", v: "\u2502",
+    };
+  }
+  return { tl: "+", tr: "+", bl: "+", br: "+", h: "-", v: "|" };
+}
+function uiSymbols() {
+  if (useUnicodeUi()) {
+    return {
+      assistant: "\u2736", user: "\u276F", running: "\u21BB",
+      ok: "\u2713", error: "\u2717", result: "\u23BF",
+      bullet: "\u25CF", caret: "\u203A", diamond: "\u25C7",
+    };
+  }
+  return { assistant: "*", user: ">", running: "~", ok: "ok", error: "x", result: "`", bullet: "*", caret: ">", diamond: "<>" };
+}
+function stripAnsi(text) {
+  return String(text || "").replace(/\x1b\[[0-9;]*m/g, "");
+}
+function cropText(text, max) {
+  const s = String(text || "");
+  return s.length > max ? s.slice(0, Math.max(0, max - 1)) + "..." : s;
+}
+function padRight(text, width) {
+  const plainLen = stripAnsi(text).length;
+  return text + " ".repeat(Math.max(0, width - plainLen));
+}
+function charDisplayWidth(ch) {
+  const cp = ch.codePointAt(0) || 0;
+  if (cp === 0) return 0;
+  if (cp < 32 || (cp >= 0x7f && cp < 0xa0)) return 0;
+  return cp >= 0x1100 ? 2 : 1;
+}
+function displayWidth(text) {
+  let n = 0;
+  for (const ch of Array.from(stripAnsi(text))) n += charDisplayWidth(ch);
+  return n;
+}
+function displayPadRight(text, width) {
+  return text + " ".repeat(Math.max(0, width - displayWidth(text)));
+}
+function fitDisplayText(text, width) {
+  const chars = Array.from(String(text || ""));
+  if (displayWidth(chars.join("")) <= width) return displayPadRight(chars.join(""), width);
+  const ellipsis = width >= 4 ? "..." : "";
+  const limit = Math.max(0, width - displayWidth(ellipsis));
+  let out = "";
+  let used = 0;
+  for (const ch of chars) {
+    const cw = charDisplayWidth(ch);
+    if (used + cw > limit) break;
+    out += ch;
+    used += cw;
+  }
+  return displayPadRight(out + ellipsis, width);
+}
+function splitDisplayText(text, width) {
+  const out = [];
+  let line = "";
+  let used = 0;
+  for (const ch of Array.from(String(text || ""))) {
+    const cw = charDisplayWidth(ch);
+    if (used + cw > width && line) {
+      out.push(line);
+      line = "";
+      used = 0;
+    }
+    line += ch;
+    used += cw;
+  }
+  out.push(line);
+  return out;
+}
+function boxRule(title = "") {
+  const width = uiWidth();
+  const g = uiGlyphs();
+  const label = title ? ` ${title} ` : "";
+  const rest = Math.max(2, width - 2 - displayWidth(label));
+  return g.tl + label + g.h.repeat(rest) + g.tr;
+}
+function boxBottom() {
+  const g = uiGlyphs();
+  return g.bl + g.h.repeat(uiWidth() - 2) + g.br;
+}
+function boxPlainLine(value = "") {
+  const width = uiWidth();
+  const g = uiGlyphs();
+  const inner = fitDisplayText(value, width - 4);
+  return `${g.v} ${inner} ${g.v}`;
+}
+function boxText(label, value) {
+  const width = uiWidth();
+  const g = uiGlyphs();
+  const left = label ? displayPadRight(label, 10) + " " : "";
+  const inner = left + fitDisplayText(value, width - 4 - displayWidth(left));
+  return `${g.v} ${inner} ${g.v}`;
+}
+function blankBoxLine() {
+  const g = uiGlyphs();
+  return `${g.v} ${" ".repeat(uiWidth() - 4)} ${g.v}`;
+}
+function selectedText(text) {
+  if (!supportsAnsi()) return text;
+  return `${ANSI.reverse}${text}${ANSI.reset}`;
+}
+function boxOptionText(value, selected = false) {
+  const width = uiWidth();
+  const g = uiGlyphs();
+  const plain = fitDisplayText(value, width - 4);
+  if (!selected) return `${g.v} ${plain} ${g.v}`;
+  return `${g.v} ${selectedText(plain)} ${g.v}`;
+}
+function wrapBoxText(text, prefix = "", maxLines = 3) {
+  const width = Math.max(28, uiWidth() - 4 - prefix.length);
+  const lines = [];
+  const inputLines = String(text || "").replace(/\r/g, "").split("\n");
+  for (const inputLine of inputLines) {
+    let rest = inputLine.replace(/\t/g, "  ");
+    if (!rest) {
+      lines.push("");
+      continue;
+    }
+    lines.push(...splitDisplayText(rest, width));
+  }
+  return lines.slice(0, maxLines).map((line, idx) => boxPlainLine(`${idx === 0 ? prefix : " ".repeat(prefix.length)}${line}`));
+}
+function wrapPlainText(text, width = uiWidth() - 4, maxLines = 4) {
+  const lines = [];
+  const sourceLines = String(text || "").replace(/\r/g, "").split("\n");
+  for (const sourceLine of sourceLines) {
+    let rest = sourceLine.replace(/\t/g, "  ");
+    if (!rest) {
+      lines.push("");
+      continue;
+    }
+    lines.push(...splitDisplayText(rest, width));
+  }
+  return lines.slice(0, maxLines);
+}
+function promptTextWithCursor(buffer, cursor, width) {
+  const safe = String(buffer || "").replace(/\r?\n/g, " ");
+  const max = Math.max(1, width);
+  const bounded = Math.max(0, Math.min(Number(cursor) || 0, safe.length));
+  const chars = Array.from(safe);
+  let charCursor = 0;
+  let codeUnits = 0;
+  for (const ch of chars) {
+    if (codeUnits >= bounded) break;
+    codeUnits += ch.length;
+    charCursor += 1;
+  }
+  let start = 0;
+  let beforeWidth = 0;
+  for (let i = 0; i < charCursor; i++) beforeWidth += charDisplayWidth(chars[i]);
+  if (beforeWidth > Math.floor(max * 0.65)) {
+    let used = 0;
+    start = charCursor;
+    while (start > 0 && used < Math.floor(max * 0.65)) {
+      start -= 1;
+      used += charDisplayWidth(chars[start]);
+    }
+  }
+  let slice = "";
+  let used = 0;
+  let cursorRendered = false;
+  for (let i = start; i < chars.length; i++) {
+    const ch = chars[i];
+    const isCursor = i === charCursor;
+    const cw = charDisplayWidth(ch);
+    if (used + Math.max(1, cw) > max) break;
+    if (isCursor) {
+      slice += supportsAnsi() ? `${ANSI.reverse}${ch || " "}${ANSI.reset}` : "_";
+      cursorRendered = true;
+    } else {
+      slice += ch;
+    }
+    used += cw;
+  }
+  if (!cursorRendered && used < max) {
+    slice += supportsAnsi() ? `${ANSI.reverse} ${ANSI.reset}` : "_";
+    used += 1;
+  }
+  const plainWidth = displayWidth(slice);
+  if (plainWidth > max) slice = fitDisplayText(stripAnsi(slice), max);
+  return displayPadRight(slice, max);
+}
 function formatToolInput(input) {
   try {
     const raw = JSON.stringify(input || {});
@@ -186,36 +405,377 @@ function formatToolInput(input) {
   }
 }
 function renderBanner() {
+  const s = uiSymbols();
   uiLine("");
-  uiLine(`DreamSeed Code v${VERSION}`, "bold");
-  uiLine(`${model} | ${projectName}`, "dim");
-  uiLine("Commands: /resume  /status  /compact  /help  /exit", "dim");
+  uiLine(uiColor(boxRule(`DreamSeed Code ${VERSION}`), "bold"));
+  uiLine(boxText(`${s.bullet} model`, model), "dim");
+  uiLine(boxText(`${s.diamond} project`, projectName), "dim");
+  uiLine(boxText("keys", "type / for commands   Up/Down select   Tab complete   Ctrl+C interrupt"), "dim");
+  uiLine(boxBottom(), "dim");
   uiLine("");
 }
 function renderAssistantStart() {
   if (!_interactiveUi) return;
-  process.stdout.write(uiColor("assistant> ", "cyan"));
+  if (_assistantBlockOpen) renderTurnDone();
+  uiLine("");
+  uiLine(uiColor(boxRule(`${uiSymbols().assistant} assistant`), "cyan"));
+  _assistantBlockOpen = true;
+  _assistantLineOpen = false;
+  _assistantLineWidth = 0;
+  _activeToolRows = 0;
+}
+function writeAssistantTextDelta(text) {
+  if (!_interactiveUi || !_assistantBlockOpen) {
+    process.stdout.write(text);
+    return;
+  }
+  const g = uiGlyphs();
+  const chunks = String(text || "").split(/(\n)/);
+  for (const chunk of chunks) {
+    if (!chunk) continue;
+    if (chunk === "\n") {
+      ensureAssistantLineBreak();
+      continue;
+    }
+    if (!_assistantLineOpen) {
+      process.stdout.write(`${g.v}  `);
+      _assistantLineOpen = true;
+      _assistantLineWidth = 0;
+    }
+    const innerWidth = uiWidth() - 4;
+    for (const ch of Array.from(chunk)) {
+      const cw = charDisplayWidth(ch);
+      if (_assistantLineWidth + cw > innerWidth) {
+        process.stdout.write(`${" ".repeat(Math.max(0, innerWidth - _assistantLineWidth))} ${g.v}\n`);
+        _assistantLineOpen = false;
+        _assistantLineWidth = 0;
+        process.stdout.write(`${g.v}  `);
+        _assistantLineOpen = true;
+      }
+      process.stdout.write(ch);
+      _assistantLineWidth += cw;
+    }
+  }
+}
+function ensureAssistantLineBreak() {
+  if (_assistantLineOpen) {
+    const g = uiGlyphs();
+    const innerWidth = uiWidth() - 4;
+    process.stdout.write(`${" ".repeat(Math.max(0, innerWidth - _assistantLineWidth))} ${g.v}\n`);
+    _assistantLineOpen = false;
+    _assistantLineWidth = 0;
+  }
 }
 function renderTurnDone() {
   if (!_interactiveUi) return;
-  process.stdout.write("\n");
+  if (!_assistantBlockOpen) return;
+  ensureAssistantLineBreak();
+  uiLine(boxBottom(), "dim");
+  uiLine("");
+  _assistantBlockOpen = false;
+  _assistantLineOpen = false;
+  _activeToolRows = 0;
 }
 function renderToolStart(tool) {
   if (!_interactiveUi) return;
-  uiLine(`\n  -> ${tool.name} ${formatToolInput(tool.input)}`, "dim");
+  if (!_assistantBlockOpen) renderAssistantStart();
+  ensureAssistantLineBreak();
+  const s = uiSymbols();
+  _activeToolRows += 1;
+  uiLine(boxText(`${s.running} tool`, `${tool.name} running ${formatToolInput(tool.input)}`), "yellow");
 }
 function renderToolEnd(tool, result) {
   if (!_interactiveUi) return;
+  if (!_assistantBlockOpen) renderAssistantStart();
+  ensureAssistantLineBreak();
   const ok = result && !result.is_error;
-  const mark = ok ? "ok" : "error";
+  const s = uiSymbols();
+  const mark = ok ? `${s.ok} done` : `${s.error} error`;
   const color = ok ? "green" : "red";
   const content = String(result?.content || "").replace(/\s+/g, " ").trim();
-  const preview = content ? ` - ${content.slice(0, 160)}` : "";
-  uiLine(`  ${mark} ${tool.name}${preview}`, color);
+  uiLine(boxText(mark, tool.name), color);
+  if (content) {
+    for (const line of wrapBoxText(content, `${s.result} `, 2)) uiLine(line, color);
+  }
 }
 function renderMcpNotice(message, color = "dim") {
   if (!_interactiveUi) return;
-  uiLine(message, color);
+  const cleaned = String(message || "").replace(/^\[dreamseed\]\s*/i, "");
+  if (_readingPrompt || _assistantBlockOpen) {
+    _queuedUiNotices.push({ message: cleaned, color });
+    return;
+  }
+  renderInfoBlock("status", [cleaned], color);
+}
+function renderInfoBlock(title, lines = [], color = "dim") {
+  if (!_interactiveUi) {
+    console.log([title, ...lines].filter(Boolean).join("\n"));
+    return;
+  }
+  if (_assistantBlockOpen) renderTurnDone();
+  uiLine(uiColor(boxRule(title), color));
+  for (const line of lines.length ? lines : [""]) {
+    for (const wrapped of wrapPlainText(line, uiWidth() - 4, 6)) uiLine(boxPlainLine(wrapped), color);
+  }
+  uiLine(boxBottom(), color);
+  uiLine("");
+}
+function renderErrorBlock(title, error) {
+  const message = error && error.message ? error.message : String(error || "");
+  renderInfoBlock(title, wrapPlainText(message, uiWidth() - 4, 4), "red");
+}
+function flushUiNotices() {
+  if (!_interactiveUi || _queuedUiNotices.length === 0) return;
+  const notices = _queuedUiNotices.splice(0, _queuedUiNotices.length);
+  for (const n of notices) renderMcpNotice(n.message, n.color);
+}
+function slashCommandPrefix(text) {
+  const trimmed = String(text || "").trimStart();
+  if (!trimmed.startsWith("/")) return "";
+  return trimmed.split(/\s+/, 1)[0].toLowerCase();
+}
+function slashCommandMatches(text) {
+  const prefix = slashCommandPrefix(text);
+  if (!prefix) return [];
+  if (prefix === "/") return SLASH_COMMANDS;
+  return SLASH_COMMANDS.filter((cmd) => cmd.name.toLowerCase().startsWith(prefix));
+}
+function visibleSlashCommands(text) {
+  return slashCommandMatches(text).slice(0, 8);
+}
+function renderSlashSuggestions(text, selectedIndex = 0) {
+  const matches = visibleSlashCommands(text);
+  if (!String(text || "").trimStart().startsWith("/")) return [];
+  const lines = [];
+  const s = uiSymbols();
+  if (matches.length === 0) {
+    lines.push(uiColor(boxRule("commands"), "yellow"));
+    lines.push(boxText("no match", "Type /help to see every command."));
+    lines.push(boxBottom());
+    return lines;
+  }
+  lines.push(uiColor(boxRule("commands"), "yellow"));
+  lines.push(boxText("hint", "Up/Down select   Enter run   Tab complete   Esc clear"));
+  for (let i = 0; i < matches.length; i++) {
+    const cmd = matches[i];
+    const pointer = i === selectedIndex ? s.caret : " ";
+    const left = `${pointer} ${cmd.usage}`.padEnd(28);
+    const row = `${left}${cmd.description}`;
+    lines.push(boxOptionText(row, i === selectedIndex));
+  }
+  lines.push(boxBottom());
+  return lines;
+}
+function renderPromptBox(buffer, cursor = String(buffer || "").length, selectedIndex = 0) {
+  const width = uiWidth();
+  const s = uiSymbols();
+  const lines = [
+    uiColor(boxRule("user"), "green"),
+    boxPlainLine(`${s.user} ${promptTextWithCursor(buffer, cursor, width - 6)}`),
+    boxText("hint", "Enter send   / commands   Ctrl+C clear/exit"),
+    boxBottom(),
+    ...renderSlashSuggestions(buffer, selectedIndex),
+  ];
+  return lines;
+}
+async function readScriptPromptLines() {
+  const chunks = [];
+  for await (const chunk of input) chunks.push(Buffer.from(chunk));
+  const text = Buffer.concat(chunks).toString("utf8").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  if (!text) return [];
+  const lines = text.split("\n");
+  if (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
+  return lines;
+}
+function takeScriptPromptLine(question = "") {
+  if (!Array.isArray(_scriptPromptLines)) return null;
+  if (_scriptPromptIndex >= _scriptPromptLines.length) return null;
+  const line = _scriptPromptLines[_scriptPromptIndex++];
+  if (question) process.stdout.write(question);
+  else process.stdout.write(uiColor("dreamseed> ", "green"));
+  process.stdout.write(`${line}\n`);
+  return line;
+}
+async function askPlainQuestion(question) {
+  const queued = takeScriptPromptLine(question);
+  if (queued !== null) return queued;
+  if (Array.isArray(_scriptPromptLines)) return "";
+  const rl = createInterface({ input, output });
+  _activeReadline = rl;
+  _readingPrompt = true;
+  try {
+    return await rl.question(question);
+  } finally {
+    _readingPrompt = false;
+    _activeReadline = null;
+    try { rl.close(); } catch (_) {}
+    flushUiNotices();
+  }
+}
+async function readPromptLine(rl) {
+  flushUiNotices();
+  const queued = takeScriptPromptLine();
+  if (queued !== null) return queued;
+  if (Array.isArray(_scriptPromptLines)) return "/exit";
+  if (!input.isTTY || !output.isTTY || process.env.DREAMSEED_SIMPLE_PROMPT === "1") {
+    _readingPrompt = true;
+    try {
+      if (rl) return await rl.question(uiColor("dreamseed> ", "green"));
+      return await askPlainQuestion(uiColor("dreamseed> ", "green"));
+    } finally {
+      _readingPrompt = false;
+      flushUiNotices();
+    }
+  }
+  return readPromptLineTty();
+}
+function readPromptLineTty() {
+  return new Promise((resolve) => {
+    let buffer = "";
+    let cursor = 0;
+    let selectedIndex = 0;
+    let renderedLines = 0;
+    let done = false;
+    const wasRaw = input.isRaw;
+    const slashVisible = () => String(buffer || "").trimStart().startsWith("/");
+    const slashMatches = () => visibleSlashCommands(buffer);
+    const clampSelected = () => {
+      const matches = slashMatches();
+      if (matches.length === 0) {
+        selectedIndex = 0;
+      } else {
+        selectedIndex = Math.max(0, Math.min(selectedIndex, matches.length - 1));
+      }
+      return matches;
+    };
+    const render = () => {
+      if (renderedLines > 0) output.write(`\x1b[${renderedLines}F\x1b[0J`);
+      output.write("\x1b[?25l");
+      clampSelected();
+      const lines = renderPromptBox(buffer, cursor, selectedIndex);
+      output.write(lines.join("\n") + "\n");
+      output.write("\x1b[?25h");
+      renderedLines = lines.length;
+    };
+    const finish = (value) => {
+      if (done) return;
+      done = true;
+      input.off("keypress", onKeypress);
+      try { input.setRawMode(Boolean(wasRaw)); } catch (_) {}
+      output.write("\x1b[?25h");
+      _readingPrompt = false;
+      output.write("\n");
+      flushUiNotices();
+      resolve(value);
+    };
+    const insertText = (text) => {
+      if (!text) return;
+      const printable = text.replace(/[\x00-\x08\x0b-\x1f\x7f]/g, "");
+      if (!printable) return;
+      buffer = buffer.slice(0, cursor) + printable + buffer.slice(cursor);
+      cursor += printable.length;
+      selectedIndex = 0;
+    };
+    const completeSlash = () => {
+      const matches = clampSelected();
+      if (matches.length === 0) return;
+      const first = matches[selectedIndex].name;
+      const rest = buffer.trimStart().slice(slashCommandPrefix(buffer).length);
+      buffer = first + (rest.startsWith(" ") ? rest : "");
+      cursor = buffer.length;
+    };
+    const submitOrCompleteSlash = () => {
+      if (slashVisible()) {
+        const matches = clampSelected();
+        const prefix = slashCommandPrefix(buffer);
+        const exact = SLASH_COMMANDS.some((cmd) => cmd.name === prefix);
+        if (matches.length > 0 && !exact) {
+          const rest = buffer.trimStart().slice(prefix.length);
+          const completed = matches[selectedIndex].name + (rest.startsWith(" ") ? rest : "");
+          finish(completed);
+          return;
+        }
+      }
+      finish(buffer);
+    };
+    const onKeypress = (str, key = {}) => {
+      if (key.ctrl && key.name === "c") {
+        if (buffer.length > 0) {
+          buffer = "";
+          cursor = 0;
+          selectedIndex = 0;
+          render();
+          return;
+        }
+        finish("/exit");
+        return;
+      }
+      if (key.ctrl && key.name === "d") { finish("/exit"); return; }
+      if (key.name === "return" || key.name === "enter") { submitOrCompleteSlash(); return; }
+      if (key.name === "escape") {
+        buffer = "";
+        cursor = 0;
+        selectedIndex = 0;
+        render();
+        return;
+      }
+      if (key.name === "backspace") {
+        if (cursor > 0) {
+          buffer = buffer.slice(0, cursor - 1) + buffer.slice(cursor);
+          cursor -= 1;
+          selectedIndex = 0;
+        }
+        render();
+        return;
+      }
+      if (key.name === "delete") {
+        if (cursor < buffer.length) {
+          buffer = buffer.slice(0, cursor) + buffer.slice(cursor + 1);
+          selectedIndex = 0;
+        }
+        render();
+        return;
+      }
+      if (key.name === "up" && slashVisible()) {
+        const matches = clampSelected();
+        if (matches.length > 0) selectedIndex = (selectedIndex - 1 + matches.length) % matches.length;
+        render();
+        return;
+      }
+      if (key.name === "down" && slashVisible()) {
+        const matches = clampSelected();
+        if (matches.length > 0) selectedIndex = (selectedIndex + 1) % matches.length;
+        render();
+        return;
+      }
+      if (key.name === "left") { cursor = Math.max(0, cursor - 1); render(); return; }
+      if (key.name === "right") { cursor = Math.min(buffer.length, cursor + 1); render(); return; }
+      if (key.name === "home") { cursor = 0; render(); return; }
+      if (key.name === "end") { cursor = buffer.length; render(); return; }
+      if (key.name === "tab") { completeSlash(); render(); return; }
+      if (!key.ctrl && !key.meta) {
+        insertText(str || key.sequence || "");
+        render();
+      }
+    };
+    _readingPrompt = true;
+    if (!_keypressEventsEnabled) {
+      emitKeypressEvents(input);
+      _keypressEventsEnabled = true;
+    }
+    input.on("keypress", onKeypress);
+    try { input.setRawMode(true); } catch (_) {}
+    render();
+  });
+}
+function printSlashSuggestionsForInput(text) {
+  const matches = slashCommandMatches(text);
+  if (matches.length === 0) {
+    renderInfoBlock("commands", [`Unknown command: ${slashCommandPrefix(text) || text}`], "yellow");
+    printSlashHelp();
+    return;
+  }
+  for (const line of renderSlashSuggestions(text, 0)) uiLine(line);
 }
 
 // Fix #22: SIGINT handler for graceful shutdown
@@ -379,7 +939,8 @@ async function* streamMessages(messages, tools) {
             // and emitted as structured events by writeResult.
             const _td = event.delta.text || "";
             if (_td) { _textStreamed = true; }
-            process.stdout.write(_td);
+            if (!options.print && _interactiveUi) writeAssistantTextDelta(_td);
+            else process.stdout.write(_td);
           }
         } else if (currentBlock && event.delta?.type === "input_json_delta") {
           currentBlock._partialJson = (currentBlock._partialJson || "") + (event.delta.partial_json || "");
@@ -1066,8 +1627,15 @@ async function executeToolSafely(toolUse, _blacklist) {
       // In non-interactive mode, deny; in interactive, would prompt
       if (!options.print && input.isTTY) {
         // Fix P5-I: reuse the main-loop readline to avoid two readers fighting for stdin.
+        if (_interactiveUi) {
+          renderInfoBlock("approval", [
+            `${toolUse.name} wants to run.`,
+            formatToolInput(toolUse.input || {}),
+            "Type y to allow, anything else to deny.",
+          ], "yellow");
+        }
         const rlForApproval = _activeReadline || createInterface({ input, output });
-        const answer = await rlForApproval.question(`[approval] ${toolUse.name} - allow? (y/N): `);
+        const answer = await rlForApproval.question(uiColor("allow? (y/N): ", "yellow"));
         if (rlForApproval !== _activeReadline) try { rlForApproval.close(); } catch (_) {}
         if (answer.trim().toLowerCase() !== "y") {
           return { content: `User denied ${toolUse.name}`, is_error: true };
@@ -2209,7 +2777,13 @@ async function runInteractiveMode() {
   // Fix P7-D: every cleanup happens in finally so a throw in initMcpClients,
   // SessionStart hook, or the main loop still releases the readline and MCP
   // children instead of leaving the process wedged.
-  const rl = createInterface({ input, output });
+  const useScriptPromptInput = !input.isTTY;
+  if (useScriptPromptInput) {
+    _scriptPromptLines = await readScriptPromptLines();
+    _scriptPromptIndex = 0;
+  }
+  const usePlainReadline = !useScriptPromptInput && (!output.isTTY || process.env.DREAMSEED_SIMPLE_PROMPT === "1");
+  const rl = usePlainReadline ? createInterface({ input, output }) : null;
   _activeReadline = rl;
   _interactiveUi = true;
   try {
@@ -2219,22 +2793,28 @@ async function runInteractiveMode() {
   });
 
   const messages = [];
-  currentSession = { id: sessionId, messages, subagentDepth: 0 };
+  currentSession = { id: sessionId, messages, subagentDepth: 0, streamToStdout: true };
 
   renderBanner();
 
   while (true) {
-    const line = await rl.question(uiColor("dreamseed> ", "green"));
+    const line = await readPromptLine(rl);
     const prompt = line.trim();
     if (!prompt) continue;
+    const slashPrefix = slashCommandPrefix(prompt);
+    const exactSlashCommand = SLASH_COMMANDS.some((cmd) => cmd.name === slashPrefix);
+    if (prompt === "/" || (prompt.startsWith("/") && !exactSlashCommand)) {
+      printSlashSuggestionsForInput(prompt);
+      continue;
+    }
     if (prompt === "/exit" || prompt === "/quit") break;
     if (prompt === "/help") { printSlashHelp(); continue; }
-    if (prompt === "/model") { console.log(`Active model: ${model}`); continue; }
+    if (prompt === "/model") { renderInfoBlock("model", [`Active model: ${model}`], "cyan"); continue; }
     if (prompt === "/clear") {
       messages.length = 0;
       // Fix #14: reset tool failure tracking on /clear
       while (recentToolResults.length > 0) recentToolResults.pop();
-      console.log("Conversation cleared.");
+      renderInfoBlock("cleared", ["Conversation cleared."], "green");
       continue;
     }
     if (prompt === "/compact" || prompt.startsWith("/compact ")) {
@@ -2242,12 +2822,14 @@ async function runInteractiveMode() {
       const compacted = await compactMessages(messages, instructions);
       messages.length = 0;
       messages.push(...compacted);
-      console.log(`[dreamseed] compacted to ${messages.length} messages (~${estimateTokens(messages)} tokens)`);
+      renderInfoBlock("compact", [`Compacted to ${messages.length} messages (~${estimateTokens(messages)} tokens).`], "green");
       continue;
     }
     if (prompt === "/status") {
-      console.log(`Session: ${sessionId.slice(0, 8)} | Turns: ${turnCount} | Messages: ${messages.length} | Tokens: ~${estimateTokens(messages)}`);
-      console.log(`MCP servers: ${mcpClients.size} | Hooks: ${hookScripts.length} | Agents: ${Object.keys(agents).length}`);
+      renderInfoBlock("status", [
+        `Session ${sessionId.slice(0, 8)}   Turns ${turnCount}   Messages ${messages.length}   Tokens ~${estimateTokens(messages)}`,
+        `MCP ${mcpClients.size}   Hooks ${hookScripts.length}   Agents ${Object.keys(agents).length}`,
+      ], "cyan");
       continue;
     }
     if (prompt === "/resume" || prompt.startsWith("/resume ")) {
@@ -2257,19 +2839,19 @@ async function runInteractiveMode() {
 
     saveHistoryEvent({ type: "user_input", content: prompt });
     const hookRes = await runHooks("UserPromptSubmit", { prompt, sessionId, turnCount, projectDir });
-    if (hookRes?.continueFlag === false) { console.log("[dreamseed] hook requested stop"); continue; }
+    if (hookRes?.continueFlag === false) { renderInfoBlock("hook", ["Hook requested stop."], "yellow"); continue; }
     if (hookRes?.additionalSystemPrompt) { messages.push({ role: "system", content: hookRes.additionalSystemPrompt.slice(0, 4000) }); }
     messages.push({ role: "user", content: prompt });
 
     try {
       renderAssistantStart();
       const result = await runToolLoop(messages, null, 0);
-      if (!_textStreamed && result) process.stdout.write(result);
+      if (!_textStreamed && result) writeAssistantTextDelta(result);
       renderTurnDone();
       saveHistoryEvent({ type: "assistant_response", content: result.slice(0, 500) });
     } catch (err) {
       renderTurnDone();
-      console.error(`[dreamseed] error: ${err.message}`);
+      renderErrorBlock("error", err);
       saveHistoryEvent({ type: "error", content: err.message });
     }
 
@@ -2277,15 +2859,15 @@ async function runInteractiveMode() {
   }
 
   } catch (e) {
-    console.error(`[dreamseed] interactive mode aborted: ${e && e.message ? e.message : e}`);
+    renderErrorBlock("aborted", e);
     if (e && e.stack && process.env.DREAMSEED_DEBUG) console.error(e.stack);
   } finally {
     try { await runHooks("SessionEnd", { sessionId, turnCount }); } catch (_) {}
     try { await shutdownMcpClients(); } catch (_) {}
     _activeReadline = null;
+    if (rl) try { rl.close(); } catch (_) {}
+    renderInfoBlock("goodbye", ["DreamSeed exited."], "dim");
     _interactiveUi = false;
-    try { rl.close(); } catch (_) {}
-    console.log("Goodbye.");
   }
 }
 
@@ -2317,11 +2899,11 @@ async function runPrintMode(prompt) {
 // ===== /resume Command =====
 async function handleResumeCommand(rl, messages, prompt) {
   if (!existsSync(LEGACY_HISTORY_SCRIPT)) {
-    console.log("[dreamseed] legacy history script missing.");
+    renderInfoBlock("resume", ["Legacy history script missing."], "yellow");
     return;
   }
   if (!existsSync(LEGACY_HISTORY_DEST)) {
-    console.log("[dreamseed] no imported legacy history found. Run: dreamseed history import");
+    renderInfoBlock("resume", ["No imported legacy history found.", "Run: dreamseed history import"], "yellow");
     return;
   }
 
@@ -2335,19 +2917,22 @@ async function handleResumeCommand(rl, messages, prompt) {
     const sessions = await runLegacyHistoryJson(["list-sessions", "--dest", LEGACY_HISTORY_DEST, "--limit", "12"]);
     const choices = sessions.sessions || [];
     if (choices.length === 0) {
-      console.log("[dreamseed] no legacy sessions found.");
+      renderInfoBlock("resume", ["No legacy sessions found."], "yellow");
       return;
     }
 
-    console.log("\nImported legacy sessions:");
+    const resumeLines = [];
     choices.forEach((s, i) => {
       const project = s.project || "unknown";
       const time = s.last_time || s.first_time || "unknown";
-      console.log(`${String(i + 1).padStart(2)}. ${time}  ${project}  (${s.entry_count || 0} entries)`);
-      if (s.preview) console.log(`    ${(s.preview || "").replace(/\s+/g, " ").trim().slice(0, 110)}`);
+      resumeLines.push(`${String(i + 1).padStart(2)}. ${time}  ${project}  (${s.entry_count || 0} entries)`);
+      if (s.preview) resumeLines.push(`    ${(s.preview || "").replace(/\s+/g, " ").trim().slice(0, 110)}`);
     });
+    renderInfoBlock("imported sessions", resumeLines, "cyan");
 
-    const answer = (await rl.question("\nResume number, session id, or search text: ")).trim();
+    const answer = (await (rl
+      ? rl.question(uiColor("Resume number, session id, or search text: ", "cyan"))
+      : askPlainQuestion(uiColor("Resume number, session id, or search text: ", "cyan")))).trim();
     if (!answer) return;
 
     const num = Number(answer);
@@ -2357,7 +2942,7 @@ async function handleResumeCommand(rl, messages, prompt) {
       await resumeLegacySession(messages, answer);
     }
   } catch (err) {
-    console.log(`[dreamseed] /resume failed: ${err.message}`);
+    renderErrorBlock("resume failed", err);
   }
 }
 
@@ -2369,7 +2954,7 @@ async function resumeLegacySession(messages, target) {
   ]);
 
   const context = payload.context || "";
-  if (!context) { console.log("[dreamseed] no resumable context."); return; }
+  if (!context) { renderInfoBlock("resume", ["No resumable context."], "yellow"); return; }
 
   // Fix #32: sort entries by timestamp before injecting
   const entries = payload.entries || [];
@@ -2391,7 +2976,7 @@ async function resumeLegacySession(messages, target) {
   });
 
   const session = payload.session || {};
-  console.log(`[dreamseed] resumed session ${session.session_id || target} (${session.entry_count || 0} entries).`);
+  renderInfoBlock("resumed", [`Session ${session.session_id || target} (${session.entry_count || 0} entries).`], "green");
 }
 
 function resolvePythonExe() {
@@ -2546,6 +3131,10 @@ function sleep(ms, signal) {
 }
 
 function printHelp() {
+  const commandLines = SLASH_COMMANDS
+    .filter((cmd) => cmd.name !== "/quit")
+    .map((cmd) => `  ${cmd.usage.padEnd(18)} ${cmd.description}`)
+    .join("\n");
   console.log(`DreamSeed Lite Kernel v${VERSION}
 
 Usage:
@@ -2553,13 +3142,7 @@ Usage:
   dreamseed
 
 Inside the interactive shell:
-  /resume       List and load imported legacy sessions
-  /compact      Compress conversation context
-  /clear        Clear current conversation
-  /model        Show active model
-  /status       Show session statistics
-  /help         Show this help
-  /exit         Exit
+${commandLines}
 
 The DreamSeed launcher starts the provider bridge automatically when
 DREAMSEED_PROVIDER_CONFIG points to a private provider config.
@@ -2567,12 +3150,9 @@ DREAMSEED_PROVIDER_CONFIG points to a private provider config.
 }
 
 function printSlashHelp() {
-  console.log(`Slash commands:
-  /resume [id]  Resume legacy session
-  /compact [instr]  Compress context
-  /clear        Clear conversation
-  /model        Show active model
-  /status       Session stats
-  /help         This help
-  /exit         Exit`);
+  uiLine(boxRule("Slash Commands"), "dim");
+  for (const cmd of SLASH_COMMANDS) {
+    uiLine(boxText(cmd.name, `${cmd.usage} - ${cmd.description}`), "dim");
+  }
+  uiLine(boxBottom(), "dim");
 }
