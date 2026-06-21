@@ -71,6 +71,7 @@ self-evolve-backups/
 .cache/
 *.pyc
 node_modules/
+vendor/
 # Logs and transient diagnostics.
 logs/
 logs/hook-trace/

@@ -95,6 +95,7 @@ function Resolve-NodeRuntime {
   $candidates = @()
   if ($Node) { $candidates += $Node }
   if ($env:DREAMSEED_NODE) { $candidates += $env:DREAMSEED_NODE }
+  if ($BundledNode -and (Test-Path -LiteralPath $BundledNode)) { $candidates += $BundledNode }
   $cmd = Get-Command node -ErrorAction SilentlyContinue
   if ($cmd) { $candidates += $cmd.Source }
   $candidates += @(
@@ -133,6 +134,9 @@ function Resolve-PythonRuntime {
   }
   if ($env:DREAMSEED_PYTHON) {
     $candidates += @{ Exe = $env:DREAMSEED_PYTHON; Args = @(); Display = $env:DREAMSEED_PYTHON }
+  }
+  if ($BundledPython -and (Test-Path -LiteralPath $BundledPython)) {
+    $candidates += @{ Exe = $BundledPython; Args = @(); Display = "bundled Python" }
   }
   $python = Get-Command python -ErrorAction SilentlyContinue
   if ($python) {
@@ -192,6 +196,9 @@ $PythonSite = Join-Path $RuntimeDir "python-site"
 $DreamSeedCmd = Join-Path $BinDir "dreamseed.cmd"
 $Agent = Join-Path $AppRoot "bin\dreamseed-agent.js"
 $PythonDepsScript = Join-Path $AppRoot "scripts\install-python-deps.ps1"
+$BundledNode = Join-Path $AppRoot "vendor\node\win-x64\node.exe"
+$BundledPython = Join-Path $AppRoot "vendor\python\win-x64\python.exe"
+$BundledWheelhouse = Join-Path $AppRoot "vendor\python-wheels"
 
 if (-not (Test-Path -LiteralPath $Agent)) {
   throw "DreamSeed agent not found: $Agent"
@@ -213,16 +220,22 @@ if (-not $SkipPythonDeps) {
   $env:DREAMSEED_PYTHON = $PythonRuntime.Exe
   $env:DREAMSEED_PYTHON_ARGS = ($PythonRuntime.Args -join " ")
   $env:DREAMSEED_PYTHON_SITE = $PythonSite
+  $hasBundledWheelhouse = (Test-Path -LiteralPath $BundledWheelhouse) -and
+    ((Get-ChildItem -LiteralPath $BundledWheelhouse -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '\.(whl|tar\.gz|zip)$' } | Select-Object -First 1) -ne $null)
 
   $depArgs = @(
     "-NoProfile",
     "-ExecutionPolicy", "Bypass",
     "-File", $PythonDepsScript,
-    "-Target", $PythonSite,
-    "-MempalaceSource", $AppRoot
+    "-Target", $PythonSite
   )
-  if ($OfflinePythonDeps) {
+  if ($hasBundledWheelhouse) {
+    $depArgs += @("-Wheelhouse", $BundledWheelhouse)
+  }
+  if ($OfflinePythonDeps -or $hasBundledWheelhouse) {
     $depArgs += "-Offline"
+  } else {
+    $depArgs += @("-MempalaceSource", $AppRoot)
   }
   & powershell.exe @depArgs
   if ($LASTEXITCODE -ne 0) {

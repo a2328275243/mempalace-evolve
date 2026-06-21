@@ -64,6 +64,9 @@ function Resolve-MempalaceSpec {
   if ($MempalacePackage) {
     return $MempalacePackage
   }
+  if ($Offline) {
+    return "mempalace-evolve[mcp]"
+  }
 
   $sourceCandidates = @()
   if ($MempalaceSource) {

@@ -90,7 +90,12 @@ This gives you a `dreamseed` command that runs an interactive coding agent or a 
 
 ### Install
 
-Download the latest package from [DreamSeed Code v0.2.0](https://github.com/a2328275243/mempalace-evolve/releases/tag/dreamseed-code-v0.2.0), unzip it, then run:
+Download the latest package from [DreamSeed Code v0.2.0](https://github.com/a2328275243/mempalace-evolve/releases/tag/dreamseed-code-v0.2.0).
+
+- Most Windows users should choose `DreamSeed-Code-0.2.0-Windows-Full.zip`. It includes portable Node.js, portable Python, and the Python wheelhouse, so it does not need `winget` or pip network access during install.
+- Developers can choose `dreamseed-code-0.2.0-source.zip`. It is smaller, but it expects a normal Node/Python/network setup.
+
+Unzip the package, then run:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install-dreamseed.ps1
@@ -109,6 +114,7 @@ dreamseed --help
 The installer:
 - registers the `dreamseed` command on your PATH,
 - checks Node.js 18+ and Python 3.10+,
+- uses bundled Node.js, bundled Python, and bundled wheels first when the full kit is used,
 - tries `winget install OpenJS.NodeJS.LTS` and `winget install Python.Python.3.12` if a runtime is missing,
 - installs Python dependencies including MemPalace from the included source package,
 - runs `dreamseed --help` as a self-test,

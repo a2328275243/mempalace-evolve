@@ -57,6 +57,7 @@ function Resolve-MempalaceSpec {
     $sourceCandidates += $srcPath
     $sourceCandidates += (Split-Path -Parent $srcPath)
   }
+  $sourceCandidates += $RepoRoot
   $sourceCandidates += (Join-Path $RepoRoot "vendor\mempalace-evolve")
 
   foreach ($candidate in $sourceCandidates) {
