@@ -109,11 +109,19 @@ Move-Item -LiteralPath $Stage -Destination $AppRoot -Force
 
 try {
   Write-Step "Registering dreamseed command"
-  & $PowerShellExe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $AppRoot "scripts\install-dreamseed.ps1") `
-    -AppRoot $AppRoot `
-    -InstallRoot $InstallRoot `
-    -NoAutoInstall `
-    -OfflinePythonDeps
+  $installArgs = @(
+    "-NoProfile",
+    "-ExecutionPolicy", "Bypass",
+    "-File", (Join-Path $AppRoot "scripts\install-dreamseed.ps1"),
+    "-AppRoot", $AppRoot,
+    "-InstallRoot", $InstallRoot,
+    "-NoAutoInstall",
+    "-OfflinePythonDeps"
+  )
+  if ($env:DREAMSEED_SETUP_NO_PATH_UPDATE -eq "1") {
+    $installArgs += "-NoPathUpdate"
+  }
+  & $PowerShellExe @installArgs
   if ($LASTEXITCODE -ne 0) {
     throw "DreamSeed command installer failed with exit code $LASTEXITCODE."
   }

@@ -80,6 +80,13 @@ let currentSession = null;
 let turnCount = 0;
 // Fix P5-I: shared readline reference for approval prompts in interactive mode.
 let _activeReadline = null;
+let _mcpInitPromise = null;
+let _mcpInitStarted = false;
+let _mcpInitCompleted = false;
+let _mcpInitNotified = false;
+let _interactiveUi = false;
+const _mcpPendingChildren = new Set();
+let _shuttingDown = false;
 
 // Fix P1 third-round: wrap entry in async main() so module-top-level finishes
 // initializing all const declarations (BUILTIN_TOOLS at L334, etc.) before
@@ -95,7 +102,7 @@ async function main() {
     await runInteractiveMode();
   }
 }
-main().catch((error) => {
+function handleFatal(error) {
   // Fix RT-3: structured error NDJSON for json/stream-json/ndjson formats so
   // desktop UI / CI consumers can parse failures without scraping stderr.
   const fmt = (typeof options !== "undefined" && options && options.outputFormat) || "";
@@ -111,7 +118,8 @@ main().catch((error) => {
   }
   if (error && error.stack && process.env.DREAMSEED_DEBUG) console.error(error.stack);
   process.exit(1);
-});
+}
+queueMicrotask(() => { main().catch(handleFatal); });
 
 
 // Fix #33: structured JSON logging to ~/.dreamseed/logs/kernel.log
@@ -149,6 +157,66 @@ function writeJsonAtomic(filePath, obj) {
 
 function logWarn(msg, extra) { logEvent("warn", "kernel", msg, extra); }
 function logError(msg, extra) { logEvent("error", "kernel", msg, extra); }
+
+const ANSI = {
+  reset: "\x1b[0m",
+  dim: "\x1b[2m",
+  bold: "\x1b[1m",
+  cyan: "\x1b[36m",
+  green: "\x1b[32m",
+  yellow: "\x1b[33m",
+  red: "\x1b[31m",
+};
+function supportsAnsi() {
+  return Boolean(output.isTTY) && process.env.NO_COLOR !== "1";
+}
+function uiColor(text, color) {
+  if (!supportsAnsi()) return text;
+  return `${ANSI[color] || ""}${text}${ANSI.reset}`;
+}
+function uiLine(text = "", color = "") {
+  console.log(color ? uiColor(text, color) : text);
+}
+function formatToolInput(input) {
+  try {
+    const raw = JSON.stringify(input || {});
+    return raw.length > 140 ? raw.slice(0, 137) + "..." : raw;
+  } catch (_) {
+    return "{}";
+  }
+}
+function renderBanner() {
+  uiLine("");
+  uiLine(`DreamSeed Code v${VERSION}`, "bold");
+  uiLine(`${model} | ${projectName}`, "dim");
+  uiLine("Commands: /resume  /status  /compact  /help  /exit", "dim");
+  uiLine("");
+}
+function renderAssistantStart() {
+  if (!_interactiveUi) return;
+  process.stdout.write(uiColor("assistant> ", "cyan"));
+}
+function renderTurnDone() {
+  if (!_interactiveUi) return;
+  process.stdout.write("\n");
+}
+function renderToolStart(tool) {
+  if (!_interactiveUi) return;
+  uiLine(`\n  -> ${tool.name} ${formatToolInput(tool.input)}`, "dim");
+}
+function renderToolEnd(tool, result) {
+  if (!_interactiveUi) return;
+  const ok = result && !result.is_error;
+  const mark = ok ? "ok" : "error";
+  const color = ok ? "green" : "red";
+  const content = String(result?.content || "").replace(/\s+/g, " ").trim();
+  const preview = content ? ` - ${content.slice(0, 160)}` : "";
+  uiLine(`  ${mark} ${tool.name}${preview}`, color);
+}
+function renderMcpNotice(message, color = "dim") {
+  if (!_interactiveUi) return;
+  uiLine(message, color);
+}
 
 // Fix #22: SIGINT handler for graceful shutdown
 let sigintCount = 0; let _sigintHardTimer = null;
@@ -800,6 +868,7 @@ function trimContext(messages) {
 
 // ===== Tool Loop =====
 async function runToolLoop(messages, agentType, depth) {
+  await waitForMcpReady(options.print ? 15000 : 1200);
   const maxTurns = options.maxTurns || 100;
   const tools = getToolDefinitions();
   let finalText = "";
@@ -895,28 +964,34 @@ async function runToolLoop(messages, agentType, depth) {
 
     // Run readonly tools in parallel
     if (readonlyTools.length > 0) {
+      for (const t of readonlyTools) renderToolStart(t);
       const results = await Promise.allSettled(
         readonlyTools.map(t => executeToolSafely(t, localToolBlacklist))
       );
       for (let i = 0; i < readonlyTools.length; i++) {
-        toolResults.push({
+        const tr = {
           tool_use_id: readonlyTools[i].id,
           type: "tool_result",
           content: results[i].status === "fulfilled" ? results[i].value.content : `Error: ${results[i].reason?.message}`,
           is_error: results[i].status === "rejected" || results[i].value?.is_error,
-        });
+        };
+        toolResults.push(tr);
+        renderToolEnd(readonlyTools[i], tr);
       }
     }
 
     // Run mutating tools sequentially
     for (const tool of mutatingTools) {
+      renderToolStart(tool);
       const result = await executeToolSafely(tool, localToolBlacklist);
-      toolResults.push({
+      const tr = {
         tool_use_id: tool.id,
         type: "tool_result",
         content: result.content,
         is_error: result.is_error,
-      });
+      };
+      toolResults.push(tr);
+      renderToolEnd(tool, tr);
     }
 
     // Check for repeated failures and feed a corrective hint back to the model
@@ -1152,17 +1227,51 @@ async function initMcpClients() {
   try {
     const config = JSON.parse(readFileSync(MCP_CONFIG, "utf8").replace(/^\uFEFF/, ""));
     const servers = config.mcpServers || {};
-    for (const [name, server] of Object.entries(servers)) {
+    const entries = Object.entries(servers);
+    const results = await Promise.allSettled(entries.map(async ([name, server]) => {
       try {
         const client = await startMcpServer(name, server);
         if (client) mcpClients.set(name, client);
       } catch (err) {
         console.error(`[dreamseed] MCP server ${name} failed to start: ${err.message}`);
       }
-    }
+    }));
+    const failed = results.filter(r => r.status === "rejected").length;
+    if (failed > 0) logWarn("some MCP servers failed during init", { failed });
   } catch (err) {
     console.error(`[dreamseed] failed to load MCP config: ${err.message}`);
   }
+}
+
+function startMcpClientsInBackground() {
+  if (_mcpInitStarted) return _mcpInitPromise;
+  _mcpInitStarted = true;
+  _mcpInitPromise = initMcpClients()
+    .catch((err) => {
+      logWarn("background MCP init failed", { error: err?.message || String(err) });
+      if (_interactiveUi) renderMcpNotice(`[dreamseed] MCP background init failed: ${err?.message || err}`, "yellow");
+    })
+    .finally(() => {
+      _mcpInitCompleted = true;
+      if (_interactiveUi && !_mcpInitNotified) {
+        _mcpInitNotified = true;
+        const names = Array.from(mcpClients.keys());
+        if (names.length > 0) renderMcpNotice(`[dreamseed] MCP ready: ${names.join(", ")}`, "dim");
+        else renderMcpNotice("[dreamseed] MCP unavailable; continuing without memory tools.", "yellow");
+      }
+    });
+  return _mcpInitPromise;
+}
+
+async function waitForMcpReady(timeoutMs = 1200) {
+  if (!_mcpInitStarted) return;
+  if (_mcpInitCompleted) return;
+  let timer = null;
+  await Promise.race([
+    _mcpInitPromise,
+    new Promise((resolve) => { timer = setTimeout(resolve, timeoutMs); }),
+  ]);
+  if (timer) clearTimeout(timer);
 }
 
 async function startMcpServer(name, config) {
@@ -1171,6 +1280,8 @@ async function startMcpServer(name, config) {
     const args = config.args || [];
     const env = { ...process.env, ...(config.env || {}) };
     const child = spawn(cmd, args, { env, stdio: ["pipe", "pipe", "pipe"], shell: false, windowsHide: true });
+    _mcpPendingChildren.add(child);
+    child.on("exit", () => { _mcpPendingChildren.delete(child); });
     const client = {
       name, child,
       tools: [],
@@ -1237,6 +1348,16 @@ async function startMcpServer(name, config) {
         }
       });
     }
+    function rejectPendingRpc(reason) {
+      const err = reason instanceof Error ? reason : new Error(String(reason || `MCP ${name} closed`));
+      for (const [id, h] of responseHandlers) {
+        try { clearTimeout(h.timer); } catch (_) {}
+        try { h.reject(err); } catch (_) {}
+      }
+      responseHandlers.clear();
+    }
+    child.on("exit", () => { rejectPendingRpc(new Error(`MCP ${name} exited`)); });
+    child.on("error", (err) => { rejectPendingRpc(err); });
 
     // Override callTool to use buffered reader (fix #4)
     client.callTool = async function(toolName, args2) {
@@ -1254,8 +1375,9 @@ async function startMcpServer(name, config) {
       // Fix P4-E: 5s was too tight for cold MCP servers (PowerShell, node); 15s is the upstream MCP recommended ceiling.
       await rpcCall(1, "initialize", { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "dreamseed", version: VERSION } }, 15000);
     } catch (e) {
-      console.error(`[dreamseed] MCP ${name} initialize failed: ${e.message}`);
+      if (!_shuttingDown) console.error(`[dreamseed] MCP ${name} initialize failed: ${e.message}`);
       try { child.kill(); } catch (_) {}
+      _mcpPendingChildren.delete(child);
       return null;
     }
 
@@ -1328,15 +1450,30 @@ async function startMcpServer(name, config) {
 }
 
 async function shutdownMcpClients() {
+  _shuttingDown = true;
   // Fix P8-12: wait for each child to actually exit (or SIGKILL after 1s) so the
   // process does not return from main() while orphaned grandchildren are still
   // tearing down. Run them in parallel so the total wait stays at ~1s worst case.
   const kills = [];
+  const seenChildren = new Set();
+  for (const ch of _mcpPendingChildren) {
+    seenChildren.add(ch);
+    try { ch?.kill("SIGTERM"); } catch (_) {}
+    kills.push(new Promise((res) => {
+      let done = false;
+      const finish = () => { if (done) return; done = true; clearTimeout(t); res(); };
+      const t = setTimeout(() => { try { ch?.kill("SIGKILL"); } catch (_) {} finish(); }, 1000);
+      if (ch && typeof ch.on === "function") ch.on("exit", finish);
+      else finish();
+    }));
+  }
+  _mcpPendingChildren.clear();
   for (const [name, client] of mcpClients) {
     try {
       if (client._heartbeat) clearInterval(client._heartbeat);
       client._shuttingDown = true;
       const ch = client.child;
+      if (seenChildren.has(ch)) continue;
       try { ch?.kill("SIGTERM"); } catch (_) {}
       kills.push(new Promise((res) => {
         let done = false;
@@ -2074,19 +2211,20 @@ async function runInteractiveMode() {
   // children instead of leaving the process wedged.
   const rl = createInterface({ input, output });
   _activeReadline = rl;
+  _interactiveUi = true;
   try {
-  await initMcpClients();
-  await runHooks("SessionStart", { sessionId, projectDir, projectName });
+  startMcpClientsInBackground();
+  runHooks("SessionStart", { sessionId, projectDir, projectName }).catch((err) => {
+    logWarn("SessionStart hook failed", { error: err?.message || String(err) });
+  });
 
   const messages = [];
   currentSession = { id: sessionId, messages, subagentDepth: 0 };
 
-  console.log(`DreamSeed Code v${VERSION}`);
-  console.log(`${model} · ${projectName}`);
-  console.log("Type /resume to continue imported legacy history, or /exit to quit.");
+  renderBanner();
 
   while (true) {
-    const line = await rl.question("dreamseed> ");
+    const line = await rl.question(uiColor("dreamseed> ", "green"));
     const prompt = line.trim();
     if (!prompt) continue;
     if (prompt === "/exit" || prompt === "/quit") break;
@@ -2124,10 +2262,13 @@ async function runInteractiveMode() {
     messages.push({ role: "user", content: prompt });
 
     try {
+      renderAssistantStart();
       const result = await runToolLoop(messages, null, 0);
-      console.log(result);
+      if (!_textStreamed && result) process.stdout.write(result);
+      renderTurnDone();
       saveHistoryEvent({ type: "assistant_response", content: result.slice(0, 500) });
     } catch (err) {
+      renderTurnDone();
       console.error(`[dreamseed] error: ${err.message}`);
       saveHistoryEvent({ type: "error", content: err.message });
     }
@@ -2142,6 +2283,7 @@ async function runInteractiveMode() {
     try { await runHooks("SessionEnd", { sessionId, turnCount }); } catch (_) {}
     try { await shutdownMcpClients(); } catch (_) {}
     _activeReadline = null;
+    _interactiveUi = false;
     try { rl.close(); } catch (_) {}
     console.log("Goodbye.");
   }
@@ -2149,7 +2291,8 @@ async function runInteractiveMode() {
 
 // ===== Print Mode =====
 async function runPrintMode(prompt) {
-  await initMcpClients();
+  startMcpClientsInBackground();
+  await waitForMcpReady(15000);
   const messages = [{ role: "user", content: prompt }];
   currentSession = { id: sessionId, messages, subagentDepth: 0 };
   // Fix P10-A: emit system init NOW (after MCP/tools are known) so consumers
@@ -2433,4 +2576,3 @@ function printSlashHelp() {
   /help         This help
   /exit         Exit`);
 }
-

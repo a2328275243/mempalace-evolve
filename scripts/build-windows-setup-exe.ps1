@@ -56,6 +56,7 @@ function Invoke-SetupSmoke {
   $env:DREAMSEED_SETUP_BASE = Join-Path $SmokeRoot "DreamSeedCode"
   $env:DREAMSEED_SETUP_INSTALL_ROOT = Join-Path $SmokeRoot "DreamSeed"
   $env:DREAMSEED_SETUP_NO_DESKTOP_SHORTCUT = "1"
+  $env:DREAMSEED_SETUP_NO_PATH_UPDATE = "1"
   $env:DREAMSEED_SETUP_SILENT = "1"
   try {
     $proc = Start-Process -FilePath $ExePath -Wait -PassThru
@@ -75,6 +76,7 @@ function Invoke-SetupSmoke {
     Remove-Item Env:\DREAMSEED_SETUP_BASE -ErrorAction SilentlyContinue
     Remove-Item Env:\DREAMSEED_SETUP_INSTALL_ROOT -ErrorAction SilentlyContinue
     Remove-Item Env:\DREAMSEED_SETUP_NO_DESKTOP_SHORTCUT -ErrorAction SilentlyContinue
+    Remove-Item Env:\DREAMSEED_SETUP_NO_PATH_UPDATE -ErrorAction SilentlyContinue
     Remove-Item Env:\DREAMSEED_SETUP_SILENT -ErrorAction SilentlyContinue
     Remove-Tree $SmokeRoot
   }

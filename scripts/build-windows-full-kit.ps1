@@ -48,6 +48,12 @@ function Copy-DirectoryContents {
   if (-not (Test-Path -LiteralPath $Source)) {
     throw "Source directory not found: $Source"
   }
+  $sourceFull = [System.IO.Path]::GetFullPath($Source).TrimEnd('\', '/')
+  $destFull = [System.IO.Path]::GetFullPath($Destination).TrimEnd('\', '/')
+  if ($sourceFull -ieq $destFull) {
+    Write-Host "Source and destination are the same; reusing: $Destination" -ForegroundColor Yellow
+    return
+  }
   Remove-Tree $Destination
   New-Item -ItemType Directory -Force -Path $Destination | Out-Null
   Get-ChildItem -LiteralPath $Source -Force | ForEach-Object {
