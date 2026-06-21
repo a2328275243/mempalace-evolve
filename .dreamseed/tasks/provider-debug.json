@@ -1,0 +1,27 @@
+{
+  "id": "provider-debug",
+  "type": "provider-debug",
+  "goal": "Debug provider configuration without exposing secrets.",
+  "inputs": [
+    "provider config",
+    "provider bridge health"
+  ],
+  "allowedTools": [
+    "read",
+    "shell",
+    "local network"
+  ],
+  "forbiddenActions": [
+    "print API keys",
+    "auto-switch models for cost"
+  ],
+  "acceptance": [
+    "dreamseed provider status",
+    "dreamseed provider test",
+    "dreamseed provider latency",
+    "dreamseed provider export-redacted"
+  ],
+  "artifacts": [
+    "redacted provider report"
+  ]
+}

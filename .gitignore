@@ -29,8 +29,21 @@ htmlcov/
 Thumbs.db
 .claude/
 # =========================================================================
-# DreamSeed & MemPalace 安全防泄露白名单/黑名单
-/.dreamseed/
+# DreamSeed and MemPalace publish rules.
+# DreamSeed source-controlled defaults.
+!.dreamseed/
+!.dreamseed/settings.json
+!.dreamseed/agents/
+!.dreamseed/agents/**
+!.dreamseed/skills/
+!.dreamseed/skills/**
+!.dreamseed/tasks/
+!.dreamseed/tasks/**
+.dreamseed/cache/
+.dreamseed/history/
+.dreamseed/logs/
+.dreamseed/providers.local.json
+.dreamseed/settings.local.json
 /.dreamseed-memory/
 /memory-candidates/
 /self-evolve-candidates/
@@ -44,7 +57,6 @@ providers.local.json
 LOCAL-KIT.md
 !dreamseed-layer/.dreamseed/
 !dreamseed-layer/.dreamseed/**
-﻿# Local compatibility runtime artifacts. DreamSeed publishes split source, not bundled kernels.
 package/
 *.tgz
 # Generated release artifacts.
@@ -71,8 +83,6 @@ temp/
 config/providers.local.json
 config/history.meta.json
 config/desktop.local.json
-.dreamseed/providers.local.json
-.dreamseed/settings.local.json
 DREAMSEED.local.md
 package-lock.json
 # Runtime caches

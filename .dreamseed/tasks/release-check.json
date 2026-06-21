@@ -1,0 +1,27 @@
+{
+  "id": "release-check",
+  "type": "release-check",
+  "goal": "Verify DreamSeed source release without leaking local data.",
+  "inputs": [
+    "source tree",
+    "package zip"
+  ],
+  "allowedTools": [
+    "read",
+    "shell"
+  ],
+  "forbiddenActions": [
+    "print secrets",
+    "include private history",
+    "include memory databases",
+    "include logs or caches"
+  ],
+  "acceptance": [
+    "dreamseed-audit.ps1",
+    "package-dreamseed.ps1",
+    "dreamseed-smoke.ps1"
+  ],
+  "artifacts": [
+    "dist/dreamseed-code-<version>-source.zip"
+  ]
+}

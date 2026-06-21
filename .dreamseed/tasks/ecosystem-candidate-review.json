@@ -1,0 +1,23 @@
+{
+  "id": "ecosystem-candidate-review",
+  "type": "ecosystem-candidate-review",
+  "goal": "Review external agent patterns before adapting them into DreamSeed.",
+  "inputs": [
+    "docs/ecosystem-candidates.md",
+    "candidate registry"
+  ],
+  "allowedTools": [
+    "read",
+    "web research when requested"
+  ],
+  "forbiddenActions": [
+    "install unreviewed frameworks",
+    "enable high-risk tools by default"
+  ],
+  "acceptance": [
+    "candidate has source, risk, dependencies, adaptation, and acceptance checks"
+  ],
+  "artifacts": [
+    "docs/ecosystem-candidates.md"
+  ]
+}
