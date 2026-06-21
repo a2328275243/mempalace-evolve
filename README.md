@@ -85,17 +85,25 @@ This gives you a `dreamseed` command that runs an interactive coding agent or a 
 ### Requirements
 
 - Windows (the install scripts are PowerShell; the kernel itself is cross-platform Node, but installation is currently Windows-first).
-- Internet access for the first install.
-- You do not have to install Node.js or Python first. The installer checks for Node.js 18+ and Python 3.10+, then tries to install Node.js LTS and Python 3.12 with Windows `winget` if either is missing.
+- You do not have to install Node.js or Python first when using the Windows setup exe or full zip.
+- The setup exe/full zip include portable Node.js, portable Python, and offline Python wheels. They do not need `winget` or pip network access during install.
 
 ### Install
 
 Download the latest package from [DreamSeed Code v0.2.0](https://github.com/a2328275243/mempalace-evolve/releases/tag/dreamseed-code-v0.2.0).
 
-- Most Windows users should choose `DreamSeed-Code-0.2.0-Windows-Full.zip`. It includes portable Node.js, portable Python, and the Python wheelhouse, so it does not need `winget` or pip network access during install.
+- Most Windows users should choose `DreamSeed-Code-0.2.0-Setup.exe`. Double-click it and the installer handles the full terminal agent setup automatically.
+- If Windows blocks the exe download, choose `DreamSeed-Code-0.2.0-Windows-Full.zip` instead. It includes portable Node.js, portable Python, and the Python wheelhouse, so it does not need `winget` or pip network access during install.
 - Developers can choose `dreamseed-code-0.2.0-source.zip`. It is smaller, but it expects a normal Node/Python/network setup.
 
-Unzip the package, then run:
+After the setup exe finishes, open a new terminal and run:
+
+```powershell
+dreamseed --help
+dreamseed
+```
+
+For the full zip fallback, unzip the package, then run:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install-dreamseed.ps1
@@ -113,12 +121,12 @@ dreamseed --help
 
 The installer:
 - registers the `dreamseed` command on your PATH,
-- checks Node.js 18+ and Python 3.10+,
-- uses bundled Node.js, bundled Python, and bundled wheels first when the full kit is used,
-- tries `winget install OpenJS.NodeJS.LTS` and `winget install Python.Python.3.12` if a runtime is missing,
+- installs the same terminal agent and MemPalace runtime,
+- uses bundled Node.js, bundled Python, and bundled wheels first when the setup exe/full kit is used,
+- tries `winget install OpenJS.NodeJS.LTS` and `winget install Python.Python.3.12` only when you install from source without bundled runtimes,
 - installs Python dependencies including MemPalace from the included source package,
 - runs `dreamseed --help` as a self-test,
-- creates `%APPDATA%\DreamSeed\` for private config and history (never published),
+- creates `%LOCALAPPDATA%\DreamSeed\` for private config and history (never published),
 - leaves your old shells' history untouched.
 
 If you do not want automatic runtime installation, pass `-NoAutoInstall` and install Node.js 18+ / Python 3.10+ yourself:

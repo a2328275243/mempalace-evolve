@@ -26,6 +26,7 @@
     "audit": "powershell -ExecutionPolicy Bypass -File scripts/dreamseed-audit.ps1",
     "build:python-wheelhouse": "powershell -ExecutionPolicy Bypass -File scripts/build-python-wheelhouse.ps1",
     "build:windows-full-kit": "powershell -ExecutionPolicy Bypass -File scripts/build-windows-full-kit.ps1",
+    "build:windows-setup-exe": "powershell -ExecutionPolicy Bypass -File scripts/build-windows-setup-exe.ps1",
     "install:command": "powershell -ExecutionPolicy Bypass -File scripts/install-dreamseed.ps1",
     "install:python": "powershell -ExecutionPolicy Bypass -File scripts/install-python-deps.ps1",
     "memory": "powershell -ExecutionPolicy Bypass -File scripts/dreamseed-memory.ps1",
