@@ -61,6 +61,16 @@ function Copy-DirectoryContents {
   }
 }
 
+function Get-StageRelativePath {
+  param([string]$Root, [string]$Path)
+  $rootFull = [System.IO.Path]::GetFullPath($Root).TrimEnd('\', '/') + '\'
+  $pathFull = [System.IO.Path]::GetFullPath($Path)
+  if ($pathFull.StartsWith($rootFull, [System.StringComparison]::OrdinalIgnoreCase)) {
+    return $pathFull.Substring($rootFull.Length).Replace('/', '\')
+  }
+  return $pathFull.Replace('/', '\')
+}
+
 function Download-File {
   param([string]$Url, [string]$Destination)
   if ($SkipDownloads) {
@@ -247,7 +257,7 @@ function New-FullKitZip {
 
   $private = Get-ChildItem -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue |
     Where-Object {
-      $rel = [System.IO.Path]::GetRelativePath($stage, $_.FullName).Replace('/', '\')
+      $rel = Get-StageRelativePath $stage $_.FullName
       $isBundledNodeRuntime = $rel -match '^vendor\\node\\win-x64\\node_modules(\\|$)'
       $isPrivatePath = $rel -match '(^|\\)(providers\.local|legacy-history|memory-candidates|self-evolve-candidates|self-evolve-backups|\.dreamseed-memory)(\\|$)'
       $isGitPath = $rel -match '(^|\\)\.git(\\|$)'
