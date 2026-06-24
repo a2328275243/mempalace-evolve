@@ -1,4 +1,4 @@
-﻿<!--
+<!--
 +========================================================================+
 |  DreamSeed Contest README Template                                     |
 |                                                                        |
@@ -22,34 +22,80 @@
 
 ---
 
-# DreamSeed Code
+# MemPalace Evolve
 
-This repository ships two things, designed to be used together or independently:
+MemPalace Evolve is a self-evolving long-term memory system for AI tools.
 
-1. **MemPalace Evolve** - an auto-evolving long-term memory system for AI agents (Python, runs as an MCP server). Use it with Claude Code, Cursor, your own bot, or anything else that speaks the Model Context Protocol.
-2. **DreamSeed Code** - a terminal coding agent built on top of **DreamSeed Lite Kernel**, a single-file 100 KB kernel written from scratch (not a fork or wrapper). DreamSeed comes with MemPalace pre-wired, plus skills, sub-agents, hooks, permissions, self-evolution, and a provider bridge for OpenAI-chat-compatible upstreams.
+It gives an assistant a memory layer that can store facts, recall relevant context, promote useful memories, decay noisy ones, reconcile conflicts, and expose everything through Python, REST, LangChain-style tools, or MCP.
 
-Pick the path that fits what you need.
+The goal is simple: make an AI assistant remember a project across sessions without forcing the user to repeat the same background every time.
 
----
+## Why This Exists
 
-## Path A: I only want the memory system
+Most AI tools have weak memory. A conversation ends, context disappears, and the next session starts cold.
 
-You do **not** need the DreamSeed agent for this. You only need Python and an MCP-capable client.
+MemPalace is built for long-running work:
 
-### 1. Install the Python package
+- research projects
+- coding projects
+- writing projects
+- personal knowledge bases
+- agents that need durable context
 
-Install from the included source (requires Python 3.10+):
+It is not a full coding agent. It is the memory layer you plug into the agent or client you already use.
 
-```powershell
+## Core Features
+
+- **Persistent memory**: store facts, decisions, relationships, and project context.
+- **Semantic recall**: retrieve memories relevant to the current task.
+- **Knowledge graph**: connect entities and relationships instead of keeping only flat notes.
+- **Memory evolution**: promote useful memories, decay weak ones, and reduce duplicates.
+- **Multiple adapters**: Python SDK, REST API, MCP server, OpenAI-style helper, and LangChain-style tools.
+- **Project isolation**: use `wing` names to separate memories by project, tool, or user.
+
+## Quick Start
+
+Requires Python 3.10+.
+
+```bash
+git clone https://github.com/a2328275243/mempalace-evolve.git
+cd mempalace-evolve
 pip install -e ".[mcp]"
 ```
 
-(works on Windows, Linux, and macOS; installs MemPalace Evolve from source plus chromadb and fastmcp)
+Run a quick check:
 
-### 2. Register it as an MCP server in your client
+```bash
+mempalace doctor
+```
 
-Add this entry to your client's MCP config (Claude Desktop's `claude_desktop_config.json`, Cursor's MCP settings, your custom bot's `.mcp.json`, etc.):
+Use the Python SDK:
+
+```python
+from mempalace_evolve import MemPalace
+
+memory = MemPalace("./.mempalace", wing="demo")
+
+memory.store_memory(
+    content="The project uses a two-stage retrieval pipeline.",
+    category="architecture",
+    importance=0.8,
+)
+
+results = memory.recall("How does retrieval work?")
+for item in results:
+    print(item.content)
+```
+
+## Use With MCP Clients
+
+Install with MCP support:
+
+```bash
+pip install -e ".[mcp]"
+```
+
+Add MemPalace as an MCP server in any MCP-capable client:
 
 ```json
 {
@@ -68,169 +114,84 @@ Add this entry to your client's MCP config (Claude Desktop's `claude_desktop_con
 }
 ```
 
-`MEMPALACE_PATH` is where the memory database lives (relative to the client's working directory, or use an absolute path). `MEMPALACE_WING` separates memories per project.
+Restart your client. It should now see MemPalace tools for storing, recalling, promoting, auditing, and querying memory.
 
-### 3. Restart your client
+`MEMPALACE_PATH` controls where the memory database lives. `MEMPALACE_WING` separates memory spaces, for example one wing per project.
 
-Your client now has MemPalace tools available (recall, store, promote, audit). The system evolves stored memories automatically over time: noisy entries decay, useful entries get promoted, and conflicts get reconciled.
+## Other Integration Options
 
-That is the whole install for the memory system. Skip the rest of this file unless you also want the DreamSeed agent.
+REST API:
 
----
-
-## Path B: I want the full DreamSeed agent (terminal) with MemPalace built in
-
-This gives you a `dreamseed` command that runs an interactive coding agent or a one-shot `--print` query, with MemPalace already wired in as MCP.
-
-### Requirements
-
-- Windows (the install scripts are PowerShell; the kernel itself is cross-platform Node, but installation is currently Windows-first).
-- You do not have to install Node.js or Python first when using the Windows setup exe or full zip.
-- The setup exe/full zip include portable Node.js, portable Python, and offline Python wheels. They do not need `winget` or pip network access during install.
-
-### Install
-
-Download the latest package from [DreamSeed Code v0.2.0](https://github.com/a2328275243/mempalace-evolve/releases/tag/dreamseed-code-v0.2.0).
-
-- Most Windows users should choose `DreamSeed-Code-0.2.0-Setup.exe`. Double-click it and the installer handles the full terminal agent setup automatically.
-- If Windows blocks the exe download, choose `DreamSeed-Code-0.2.0-Windows-Full.zip` instead. It includes portable Node.js, portable Python, and the Python wheelhouse, so it does not need `winget` or pip network access during install.
-- Developers can choose `dreamseed-code-0.2.0-source.zip`. It is smaller, but it expects a normal Node/Python/network setup.
-
-After the setup exe finishes, open a new terminal and run:
-
-```powershell
-dreamseed --help
-dreamseed
+```bash
+pip install -e ".[api]"
+mempalace-server
 ```
 
-For the full zip fallback, unzip the package, then run:
+LangChain-style tools:
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install-dreamseed.ps1
-dreamseed --help
+```bash
+pip install -e ".[langchain]"
+python examples/langchain_agent.py
 ```
 
-You can also install from the repository source:
+Minimal SDK example:
 
-```powershell
-git clone https://github.com/a2328275243/mempalace-evolve.git
-cd mempalace-evolve
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install-dreamseed.ps1
-dreamseed --help
+```bash
+python examples/sdk_basic.py
 ```
 
-The installer:
-- registers the `dreamseed` command on your PATH,
-- installs the same terminal agent and MemPalace runtime,
-- uses bundled Node.js, bundled Python, and bundled wheels first when the setup exe/full kit is used,
-- tries `winget install OpenJS.NodeJS.LTS` and `winget install Python.Python.3.12` only when you install from source without bundled runtimes,
-- installs Python dependencies including MemPalace from the included source package,
-- runs `dreamseed --help` as a self-test,
-- creates `%LOCALAPPDATA%\DreamSeed\` for private config and history (never published),
-- leaves your old shells' history untouched.
+Cursor MCP example:
 
-If you do not want automatic runtime installation, pass `-NoAutoInstall` and install Node.js 18+ / Python 3.10+ yourself:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install-dreamseed.ps1 -NoAutoInstall
+```bash
+python examples/cursor_mcp/verify_setup.py
 ```
 
-### Add a model
+Claude Code hook example:
 
-DreamSeed runs against any OpenAI-chat-compatible endpoint. The easiest way is the local manager:
-
-```powershell
-dreamseed manager
+```bash
+python examples/claude_code_hook/stop_hook.py
 ```
 
-This opens a small local web UI to add, edit, test, and switch models. It writes to `%APPDATA%\DreamSeed\providers.local.json` (gitignored). Or do it from the command line:
+These examples are optional. The core package works without any specific AI client.
 
-```powershell
-dreamseed provider setup --name my-model --base-url https://example.com/v1 --model glm-5.1
-dreamseed provider use my-model
-dreamseed provider test
+## Project Layout
+
+- `src/mempalace_evolve/` - core memory system, evolution pipeline, adapters, CLI, and SDK.
+- `tests/` - regression tests for the memory engine and adapters.
+- `examples/` - small integration examples.
+- `pyproject.toml` - package metadata and optional dependencies.
+
+## Development
+
+Install development dependencies:
+
+```bash
+pip install -e ".[dev,mcp]"
 ```
 
-### Run
+Run tests:
 
-```powershell
-dreamseed                                  # interactive REPL
-dreamseed --print "Reply exactly: ok"      # one-shot
+```bash
+python -m pytest tests/ -v
 ```
 
-When DreamSeed starts it boots the provider bridge automatically, exposes `http://127.0.0.1:17891` to the kernel, and runs the **DreamSeed Lite Kernel** underneath. MemPalace is started on demand as an MCP server.
+Run the doctor:
 
-### Common commands
-
-```powershell
-dreamseed provider status
-dreamseed provider test
-dreamseed history status
-dreamseed memory audit
-dreamseed mcp list
-dreamseed doctor context
-dreamseed eval run --suite smoke
+```bash
+python -m mempalace_evolve.cli doctor
 ```
 
-### Importing legacy history
+## Current Direction
 
-If you previously used the old compatibility kernel, import its sessions into DreamSeed's private archive so `/resume` can find them:
+The repository is now focused on MemPalace Evolve itself.
 
-```powershell
-python scripts\import_claude_history.py import
-python scripts\import_claude_history.py search "keyword"
-python scripts\import_claude_history.py sync-native-resume --target-cwd .
-dreamseed
-/resume
-```
+The next work is improving memory quality:
 
-Raw imports stay in `legacy-history/`. Reviewable summaries land in `memory-candidates/`. Both are gitignored.
-
-### Self-evolution
-
-```powershell
-dreamseed evolve status
-dreamseed evolve propose --title "..." --problem "..." --change "..."
-dreamseed evolve inspect <proposal-id>
-dreamseed evolve apply <proposal-id> --yes
-```
-
-Proposals never modify source until `apply --yes`. Apply backs originals up under `self-evolve-backups/`, blocks private paths and likely secrets, and runs the audit.
-
----
-
-## What is not in this repo
-
-This is a terminal-only build. There is no Electron desktop app, no browser UI, no bundled "compatibility kernel" - DreamSeed Lite Kernel is the only kernel and the source is right there in `bin/dreamseed-lite-kernel.js` (about 100 KB, readable). Private data also never enters the repo:
-
-- model API keys / private provider configs
-- imported legacy history
-- memory candidates and the live MemPalace database
-- self-evolve candidates and backups
-- DreamSeed Lite Kernel logs and caches
-- `node_modules/` and `package-lock.json`
-
-## Upgrading from an earlier DreamSeed build
-
-If you previously ran a build that used the 13 MB compatibility kernel (`runtime\claude-cli.js`) or an Electron desktop app, this version replaces both with DreamSeed Lite Kernel. There is no fallback to the old kernel.
-
-1. `git pull` (or reinstall this repo over the old one).
-2. Delete `runtime\claude-cli.js` from your DreamSeed local data dir if you want a clean install. The launcher only looks at `bin\dreamseed-lite-kernel.js` now, so leaving the old file is harmless but wasteful.
-3. Reinstall: `npm install -g .` or `scripts\install-dreamseed.ps1`.
-4. `dreamseed --print "ok"` to confirm the new kernel boots.
-
-If the launcher cannot find the kernel it prints `DreamSeed Lite Kernel was not found`. Point `DREAMSEED_KERNEL_JS` at a local `dreamseed-lite-kernel.js` file or reinstall.
-
-## Layout
-
-- `bin/` - `dreamseed-agent.js` launcher and `dreamseed-lite-kernel.js` kernel.
-- `.dreamseed/` - agents, skills, hooks, settings.
-- `.mcp.json` - MCP server registrations (MemPalace + a few defaults).
-- `src/mempalace_evolve/` + `pyproject.toml` - MemPalace Evolve Python package source (install with `pip install -e ".[mcp]"`).
-- `config/providers.example.json` - publishable provider template.
-- `docs/` - system prompt, installation, brand audit, eval suite, ecosystem notes.
-- `manager/` - local web UI for managing model endpoints.
-- `scripts/` - provider bridge, MemPalace MCP launcher, history importer, audit, doctor, eval, packaging, self-evolve.
+- better automatic summarization
+- better conflict detection
+- stronger knowledge graph extraction
+- cleaner memory promotion and decay
+- better demos that show memory improving across sessions
 
 ## License
 

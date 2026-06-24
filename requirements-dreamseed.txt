@@ -1,6 +1,0 @@
-# DreamSeed memory/MCP Python runtime.
-#
-# install-python-deps.ps1 also installs mempalace-evolve itself. These direct
-# dependencies stay explicit so the optional wheelhouse can be audited easily.
-chromadb>=0.4.0
-fastmcp>=2.0.0
