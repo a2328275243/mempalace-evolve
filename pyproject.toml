@@ -5,20 +5,27 @@ build-backend = "hatchling.build"
 [project]
 name = "mempalace-evolve"
 version = "0.1.0"
-description = "Self-evolving memory palace for AI agents"
+description = "Self-evolving memory palace for AI agents — persistent memory with automatic learning, knowledge graph, and multi-agent support"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
 authors = [{ name = "DreamSeed" }]
-keywords = ["ai", "memory", "agent", "knowledge-graph", "vector-search", "evolution"]
+keywords = [
+    "ai-memory", "knowledge-graph", "rag", "agent", "llm",
+    "vector-search", "mcp", "langchain", "chromadb", "sqlite",
+    "semantic-search", "long-term-memory", "python", "ai-agent",
+]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Operating System :: OS Independent",
 ]
 
 dependencies = [
@@ -35,6 +42,7 @@ dev = ["pytest>=7.0", "pytest-asyncio", "httpx", "ruff"]
 [project.urls]
 Homepage = "https://github.com/a2328275243/mempalace-evolve"
 Repository = "https://github.com/a2328275243/mempalace-evolve"
+Documentation = "https://github.com/a2328275243/mempalace-evolve/tree/master/docs"
 Issues = "https://github.com/a2328275243/mempalace-evolve/issues"
 
 [project.scripts]
