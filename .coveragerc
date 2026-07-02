@@ -1,0 +1,17 @@
+[run]
+source = src/mempalace_evolve
+omit =
+    */tests/*
+    */examples/*
+    */__pycache__/*
+    */site-packages/*
+
+[report]
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    if __name__ == .__main__.
+    raise NotImplementedError
+    if TYPE_CHECKING:
+show_missing = True
+precision = 2

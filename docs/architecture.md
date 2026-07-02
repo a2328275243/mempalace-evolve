@@ -1,6 +1,9 @@
 # MemPalace Evolve Architecture
 
 ## Overview
+![Architecture Diagram](architecture.svg)
+
+
 
 MemPalace Evolve uses a layered architecture where information flows upward from raw sources through structured knowledge to active memory.
 

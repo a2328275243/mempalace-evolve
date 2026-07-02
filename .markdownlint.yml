@@ -1,0 +1,4 @@
+# Markdown lint rules for mempalace-evolve
+MD013: false  # line-length
+MD033: false  # inline-html (badges, images)
+MD041: false  # first-line-heading (header comment block)

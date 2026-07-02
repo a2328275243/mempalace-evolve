@@ -37,7 +37,7 @@ api = ["fastapi>=0.100.0", "uvicorn>=0.20.0"]
 mcp = ["fastmcp>=2.0.0"]
 langchain = ["langchain-core>=0.1.0"]
 all = ["mempalace-evolve[api,mcp,langchain]"]
-dev = ["pytest>=7.0", "pytest-asyncio", "httpx", "ruff"]
+dev = ["pytest>=7.0", "pytest-asyncio", "pytest-cov", "httpx", "ruff"]
 
 [project.urls]
 Homepage = "https://github.com/a2328275243/mempalace-evolve"

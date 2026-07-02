@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" font-family="system-ui,sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0d1117"/>
+      <stop offset="100%" stop-color="#161b22"/>
+    </linearGradient>
+    <linearGradient id="core" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#2ea44f"/>
+      <stop offset="100%" stop-color="#22863a"/>
+    </linearGradient>
+    <linearGradient id="adapt" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#79c0ff"/>
+      <stop offset="100%" stop-color="#58a6ff"/>
+    </linearGradient>
+    <linearGradient id="evolve" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#d2a8ff"/>
+      <stop offset="100%" stop-color="#bc8cff"/>
+    </linearGradient>
+    <filter id="shadow">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+
+  <rect width="800" height="600" fill="url(#bg)" rx="12"/>
+
+  <text x="400" y="40" text-anchor="middle" fill="#e6edf3" font-size="20" font-weight="bold">MemPalace Evolve Architecture</text>
+
+  <!-- Core Engine -->
+  <rect x="50" y="70" width="700" height="140" rx="10" fill="none" stroke="url(#core)" stroke-width="2" filter="url(#shadow)"/>
+  <text x="70" y="95" fill="#2ea44f" font-size="14" font-weight="bold">Core Engine</text>
+  <rect x="80" y="110" width="120" height="40" rx="6" fill="#238636" opacity="0.7"/>
+  <text x="140" y="135" text-anchor="middle" fill="#e6edf3" font-size="11">KnowledgeGraph</text>
+  <rect x="220" y="110" width="120" height="40" rx="6" fill="#238636" opacity="0.7"/>
+  <text x="280" y="135" text-anchor="middle" fill="#e6edf3" font-size="11">ChromaHelper</text>
+  <rect x="360" y="110" width="120" height="40" rx="6" fill="#238636" opacity="0.7"/>
+  <text x="420" y="135" text-anchor="middle" fill="#e6edf3" font-size="11">PalaceConfig</text>
+  <rect x="500" y="110" width="120" height="40" rx="6" fill="#238636" opacity="0.7"/>
+  <text x="560" y="135" text-anchor="middle" fill="#e6edf3" font-size="11">Dedup</text>
+  <rect x="150" y="165" width="120" height="35" rx="6" fill="#238636" opacity="0.7"/>
+  <text x="210" y="187" text-anchor="middle" fill="#e6edf3" font-size="11">Scorer</text>
+  <rect x="290" y="165" width="120" height="35" rx="6" fill="#238636" opacity="0.7"/>
+  <text x="350" y="187" text-anchor="middle" fill="#e6edf3" font-size="11">SpacedRepetition</text>
+
+  <!-- Evolution Pipeline -->
+  <rect x="50" y="230" width="330" height="120" rx="10" fill="none" stroke="url(#evolve)" stroke-width="2" filter="url(#shadow)"/>
+  <text x="70" y="255" fill="#d2a8ff" font-size="14" font-weight="bold">Evolution Pipeline</text>
+  <rect x="70" y="270" width="100" height="30" rx="6" fill="#8256d0" opacity="0.7"/>
+  <text x="120" y="290" text-anchor="middle" fill="#e6edf3" font-size="10">Reviewer</text>
+  <rect x="185" y="270" width="100" height="30" rx="6" fill="#8256d0" opacity="0.7"/>
+  <text x="235" y="290" text-anchor="middle" fill="#e6edf3" font-size="10">CandidateExtractor</text>
+  <rect x="70" y="310" width="100" height="30" rx="6" fill="#8256d0" opacity="0.7"/>
+  <text x="120" y="330" text-anchor="middle" fill="#e6edf3" font-size="10">Promotion</text>
+  <rect x="185" y="310" width="100" height="30" rx="6" fill="#8256d0" opacity="0.7"/>
+  <text x="235" y="330" text-anchor="middle" fill="#e6edf3" font-size="10">Decay</text>
+
+  <!-- Adapters -->
+  <rect x="420" y="230" width="330" height="120" rx="10" fill="none" stroke="url(#adapt)" stroke-width="2" filter="url(#shadow)"/>
+  <text x="440" y="255" fill="#79c0ff" font-size="14" font-weight="bold">Adapters</text>
+  <rect x="440" y="270" width="90" height="30" rx="6" fill="#1f6feb" opacity="0.7"/>
+  <text x="485" y="290" text-anchor="middle" fill="#e6edf3" font-size="10">Python SDK</text>
+  <rect x="545" y="270" width="90" height="30" rx="6" fill="#1f6feb" opacity="0.7"/>
+  <text x="590" y="290" text-anchor="middle" fill="#e6edf3" font-size="10">REST API</text>
+  <rect x="440" y="310" width="90" height="30" rx="6" fill="#1f6feb" opacity="0.7"/>
+  <text x="485" y="330" text-anchor="middle" fill="#e6edf3" font-size="10">MCP Server</text>
+  <rect x="545" y="310" width="90" height="30" rx="6" fill="#1f6feb" opacity="0.7"/>
+  <text x="590" y="330" text-anchor="middle" fill="#e6edf3" font-size="10">LangChain</text>
+
+  <!-- Storage -->
+  <rect x="200" y="380" width="400" height="70" rx="10" fill="none" stroke="#8b949e" stroke-width="2" stroke-dasharray="6,3"/>
+  <text x="400" y="405" text-anchor="middle" fill="#8b949e" font-size="13" font-weight="bold">Storage Layer</text>
+  <text x="250" y="430" fill="#e6edf3" font-size="11">SQLite</text>
+  <text x="380" y="430" fill="#e6edf3" font-size="11">ChromaDB</text>
+  <text x="510" y="430" fill="#e6edf3" font-size="11">JSON</text>
+
+  <!-- Arrows -->
+  <path d="M215,230 L215,210" stroke="#d2a8ff" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M585,230 L585,210" stroke="#79c0ff" stroke-width="2"/>
+
+  <!-- CLI -->
+  <rect x="250" y="480" width="300" height="50" rx="10" fill="none" stroke="#f0883e" stroke-width="2" filter="url(#shadow)"/>
+  <text x="400" y="510" text-anchor="middle" fill="#f0883e" font-size="14" font-weight="bold">CLI &amp; Tools (mempalace, mempalace-server, mempalace-mcp)</text>
+
+  <!-- Footer -->
+  <text x="400" y="570" text-anchor="middle" fill="#484f58" font-size="11">Built with Python 3.10+  •  MIT License  •  github.com/a2328275243/mempalace-evolve</text>
+</svg>

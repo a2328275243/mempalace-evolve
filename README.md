@@ -20,6 +20,16 @@
 
 <!-- DREAMFIELD_README_HEADER_END -->
 
+<p align="center">
+  <a href="https://github.com/a2328275243/mempalace-evolve/stargazers"><img src="https://img.shields.io/github/stars/a2328275243/mempalace-evolve?style=for-the-badge&amp;logo=github&amp;color=2ea44f" alt="GitHub Stars"/></a>
+  <a href="https://github.com/a2328275243/mempalace-evolve/actions/workflows/tests.yml"><img src="https://img.shields.io/github/actions/workflow/status/a2328275243/mempalace-evolve/tests.yml?style=for-the-badge&amp;logo=githubactions&amp;label=CI" alt="CI"/></a>
+  <a href="https://pypi.org/project/mempalace-evolve/"><img src="https://img.shields.io/pypi/v/mempalace-evolve?style=for-the-badge&amp;logo=pypi&amp;color=3775a9" alt="PyPI"/></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-yellow.svg?style=for-the-badge" alt="License"/></a>
+  <a href="CONTRIBUTING.md"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=for-the-badge" alt="PRs Welcome"/></a>
+</p>
+
+
+
 ---
 
 # MemPalace Evolve
