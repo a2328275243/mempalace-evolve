@@ -89,23 +89,32 @@ class CandidateExtractor:
         score = 0
         lower = chunk.lower()
 
-        # Keyword matches
+        # Keyword matches (supports both English and Chinese keywords)
         matches = sum(1 for kw in self.keywords if kw in lower)
         score += min(matches * 2, 6)
 
         # Length bonus (substantial content)
-        if len(chunk) > 200:
+        chunk_len = len(chunk)
+        if chunk_len > 200:
             score += 1
-        if len(chunk) > 500:
+        if chunk_len > 500:
             score += 1
 
         # Code presence
         if "```" in chunk or "def " in chunk or "class " in chunk:
             score += 1
 
+        # Technical density (proportional notation, API names, version numbers)
+        import re
+        tech_patterns = len(re.findall(r'[A-Z][a-z]+(?:\.[A-Z][a-z]+)+', chunk))  # CamelCase
+        tech_patterns += len(re.findall(r'\d+\.\d+\.\d+', chunk))  # Version numbers
+        tech_patterns += len(re.findall(r'[A-Z_]{3,}', chunk))  # Constants/env vars
+        if tech_patterns >= 2:
+            score += 1
+
         # Penalize boilerplate
-        if any(bp in lower for bp in ["hello", "hi there", "sure,", "okay,"]):
-            score -= 2
+        if any(bp in lower for bp in ["hello", "hi there", "sure,", "okay,", "got it", "thanks"]):
+            score = max(0, score - 2)
 
         return max(0, min(10, score))
 
@@ -124,4 +133,6 @@ class CandidateExtractor:
 
     def _stable_id(self, content: str) -> str:
         """Generate a stable ID for deduplication."""
-        return hashlib.md5(content.strip().encode()).hexdigest()[:12]
+        # Normalize: lowercase, collapse whitespace for stable matching
+        normalized = " ".join(content.strip().lower().split())
+        return hashlib.md5(normalized.encode()).hexdigest()[:12]

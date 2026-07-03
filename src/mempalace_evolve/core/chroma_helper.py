@@ -1,8 +1,10 @@
+﻿"""MemPalace ChromaDB helper module.
+
+Centralizes ChromaDB connection/CRUD logic shared by all modules.
+Uses a singleton cached embedding function for performance.
 """
-MemPalace ChromaDB 辅助模块
-===========================
-集中 ChromaDB 连接/CRUD 逻辑，所有模块共用。
-"""
+
+from __future__ import annotations
 
 import hashlib
 import logging
@@ -11,15 +13,17 @@ import threading
 import time as _time
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 import chromadb
 
 from mempalace_evolve.core.config import get_config, COLLECTION_NAME, GLOBAL_CHROMA
+from mempalace_evolve.core.embeddings import get_cached_ef
 
 logger = logging.getLogger("mempalace.chroma")
 
 # ---------------------------------------------------------------------------
-# ChromaDB 客户端 + 集合单例缓存（线程安全）
+# ChromaDB client + collection singleton cache (thread-safe)
 # ---------------------------------------------------------------------------
 _cache_lock = threading.RLock()
 _client_cache: dict[str, chromadb.PersistentClient] = {}
@@ -29,14 +33,14 @@ _HEALTH_CHECK_INTERVAL = 60  # seconds
 
 
 def get_collection(palace_path: str = None, create: bool = True) -> chromadb.Collection | None:
-    """获取或创建 ChromaDB 集合（带缓存，线程安全）。
+    """Get or create a ChromaDB collection (cached, thread-safe).
 
     Args:
-        palace_path: ChromaDB 数据目录。None 则使用全局。
-        create: True=不存在则创建，False=不存在返回 None
+        palace_path: ChromaDB data directory. None uses global default.
+        create: True=create if missing, False=return None if missing.
 
     Returns:
-        chromadb.Collection 或 None（获取失败时）
+        chromadb.Collection or None (on failure).
     """
     if palace_path is None:
         palace_path = str(GLOBAL_CHROMA)
@@ -45,11 +49,11 @@ def get_collection(palace_path: str = None, create: bool = True) -> chromadb.Col
     with _cache_lock:
         if cache_key in _collection_cache:
             col = _collection_cache[cache_key]
-            # 每 60 秒做一次健康检查，而非每次调用都检查
+            # Health check every 60s instead of every call
             now = _time.time()
-            if now - _last_health_check.get(cache_key, 0) < 60:
+            if now - _last_health_check.get(cache_key, 0) < _HEALTH_CHECK_INTERVAL:
                 return col
-            # 健康检查
+            # Health check
             try:
                 col.count()
                 _last_health_check[cache_key] = now
@@ -64,14 +68,17 @@ def get_collection(palace_path: str = None, create: bool = True) -> chromadb.Col
                 _client_cache[palace_path] = chromadb.PersistentClient(path=palace_path)
             client = _client_cache[palace_path]
 
+        ef = get_cached_ef()
+
         if create:
             col = client.get_or_create_collection(
                 name=COLLECTION_NAME,
                 metadata={"hnsw:space": "cosine"},
+                embedding_function=ef,
             )
         else:
             try:
-                col = client.get_collection(name=COLLECTION_NAME)
+                col = client.get_collection(name=COLLECTION_NAME, embedding_function=ef)
             except Exception:
                 return None
 
@@ -79,41 +86,25 @@ def get_collection(palace_path: str = None, create: bool = True) -> chromadb.Col
             _collection_cache[cache_key] = col
         return col
     except Exception as e:
-        logger.warning(f"ChromaDB 连接失败 [{palace_path}]: {e}")
-        if create:
-            col = _repair_collection(palace_path)
-            if col:
-                with _cache_lock:
-                    _collection_cache[cache_key] = col
-            return col
+        logger.warning("Failed to get chroma collection: %s", e)
         return None
 
 
-def file_already_mined(collection, source_file: str) -> bool:
-    """检查文件是否已有 drawers。
+def add_drawer(
+    collection,
+    wing: str,
+    room: str,
+    content: str,
+    source_file: str = "manual",
+    chunk_index: int = 0,
+    added_by: str = "manual",
+    extra_meta: dict[str, Any] | None = None,
+) -> bool:
+    """Add a single drawer (memory document) to the collection.
 
-    Args:
-        collection: ChromaDB 集合
-        source_file: 文件路径（相对或绝对）
-
-    Returns:
-        True = 已挖掘，可跳过
+    Returns True on success, False if duplicate or error.
     """
-    try:
-        results = collection.get(
-            where={"source_file": source_file},
-            limit=1,
-        )
-        return len(results["ids"]) > 0
-    except Exception:
-        return False
-
-
-def add_drawer(collection, wing: str, room: str, content: str,
-               source_file: str, chunk_index: int,
-               added_by: str = "mcp", extra_meta: dict = None) -> bool:
-    """添加一条 drawer（分块记忆）。"""
-    # 强制确保所有参数为 str（防止 JSON-RPC 编码问题）
+    # Force-convert all params to string for ChromaDB compatibility
     wing = str(wing)
     room = str(room)
     content = str(content)
@@ -122,16 +113,17 @@ def add_drawer(collection, wing: str, room: str, content: str,
 
     drawer_id = _make_drawer_id(wing, room, source_file, chunk_index)
 
-    # 前置去重检查（避免依赖异常消息）
+    # Check for duplicates before adding
     try:
         existing = collection.get(ids=[drawer_id])
-        if existing and existing["ids"]:
+        if existing and existing.get("ids"):
             return False
     except Exception:
-        pass
+        pass  # If we can't check, proceed and let add handle it
 
     now_iso = datetime.now(timezone.utc).isoformat()
-    metadata = {
+
+    metadata: dict[str, str | int | float] = {
         "wing": wing,
         "room": room,
         "source_file": source_file,
@@ -141,7 +133,6 @@ def add_drawer(collection, wing: str, room: str, content: str,
         "last_accessed": now_iso,
     }
     if extra_meta:
-        # 确保 extra_meta 的值也是 str/int/float
         for k, v in extra_meta.items():
             if isinstance(v, (int, float, bool)):
                 metadata[k] = v
@@ -158,15 +149,81 @@ def add_drawer(collection, wing: str, room: str, content: str,
     except Exception as e:
         if "already exists" in str(e).lower() or "duplicate" in str(e).lower():
             return False
-        logger.warning(f"添加 drawer 失败: {e}")
+        logger.warning("add_drawer failed: %s", e)
         return False
 
 
+def batch_add_drawers(collection, drawers: list[dict]) -> tuple[int, int]:
+    """Bulk-add drawers with a single ChromaDB call per chunk.
+
+    Much faster than calling add_drawer() repeatedly.
+    Returns (added_count, skipped_count).
+    """
+    if not drawers:
+        return (0, 0)
+
+    ids: list[str] = []
+    documents: list[str] = []
+    metadatas: list[dict] = []
+
+    for d in drawers:
+        wing = str(d["wing"])
+        room = str(d["room"])
+        content = str(d["content"])
+        source_file = str(d["source_file"])
+        chunk_index = int(d.get("chunk_index", 0))
+        extra_meta = d.get("extra_meta", {})
+
+        drawer_id = _make_drawer_id(wing, room, source_file, chunk_index)
+        ids.append(drawer_id)
+
+        now_iso = datetime.now(timezone.utc).isoformat()
+        meta: dict[str, str | int | float] = {
+            "wing": wing,
+            "room": room,
+            "source_file": source_file,
+            "chunk_index": chunk_index,
+            "added_by": str(d.get("added_by", "bulk")),
+            "filed_at": now_iso,
+            "last_accessed": now_iso,
+        }
+        for k, v in extra_meta.items():
+            if isinstance(v, (int, float, bool)):
+                meta[k] = v
+            else:
+                meta[k] = str(v)
+        metadatas.append(meta)
+        documents.append(content)
+
+    added = 0
+    skipped = 0
+    # Chroma has max batch size ~500
+    for i in range(0, len(ids), 500):
+        chunk_ids = ids[i : i + 500]
+        chunk_docs = documents[i : i + 500]
+        chunk_metas = metadatas[i : i + 500]
+        try:
+            collection.add(
+                ids=chunk_ids,
+                documents=chunk_docs,
+                metadatas=chunk_metas,
+            )
+            added += len(chunk_ids)
+        except Exception as e:
+            msg = str(e).lower()
+            if "already exists" in msg or "duplicate" in msg:
+                skipped += len(chunk_ids)
+            else:
+                logger.warning("batch_add_drawers chunk failed: %s", e)
+                skipped += len(chunk_ids)
+    return (added, skipped)
+
+
 def delete_file_drawers(collection, source_file: str) -> int:
-    """删除指定文件的所有 drawers。
+    """Delete all drawers from a specific source file.
 
     Returns:
-        删除数量
+        Number of deleted items.
     """
     try:
         results = collection.get(where={"source_file": source_file})
@@ -179,10 +236,10 @@ def delete_file_drawers(collection, source_file: str) -> int:
 
 
 def delete_by_wing(collection, wing: str) -> int:
-    """删除指定翼的所有 drawers。
+    """Delete all drawers for a given wing.
 
     Returns:
-        删除数量
+        Number of deleted items.
     """
     try:
         results = collection.get(where={"wing": wing})
@@ -194,13 +251,29 @@ def delete_by_wing(collection, wing: str) -> int:
         return 0
 
 
+def delete_by_room(collection, wing: str, room: str) -> int:
+    """Delete all drawers matching a specific wing + room.
+
+    Returns:
+        Number of deleted items.
+    """
+    try:
+        results = collection.get(where={"$and": [{"wing": wing}, {"room": room}]})
+        ids = results["ids"]
+        if ids:
+            collection.delete(ids=ids)
+        return len(ids)
+    except Exception:
+        return 0
+
+
 def get_all_metadata(collection, batch_size: int = 1000) -> list[dict]:
-    """获取集合中所有文档的元数据（分批）。
+    """Fetch all document metadata from the collection (batched).
 
     Returns:
         [{id, metadata, document}]
     """
-    all_items = []
+    all_items: list[dict] = []
     try:
         total = collection.count()
         offset = 0
@@ -220,20 +293,51 @@ def get_all_metadata(collection, batch_size: int = 1000) -> list[dict]:
                 break
             offset += len(results["ids"])
     except Exception as e:
-        logger.warning(f"获取元数据失败: {e}")
+        logger.warning("get_all_metadata failed: %s", e)
     return all_items
 
 
+def get_pool_stats() -> dict:
+    """Return connection pool statistics for monitoring."""
+    with _cache_lock:
+        return {
+            "clients": len(_client_cache),
+            "collections": len(_collection_cache),
+            "health_checks": len(_last_health_check),
+        }
+
+
 def _make_drawer_id(wing: str, room: str, source_file: str, chunk_index: int) -> str:
-    """生成确定性 drawer ID"""
+    """Generate a deterministic drawer ID."""
     raw = f"{source_file}:{chunk_index}"
     hash_part = hashlib.md5(raw.encode()).hexdigest()[:16]
     return f"drawer_{wing}_{room}_{hash_part}"
 
 
+
+
+def file_already_mined(collection: Any, source_file: str) -> bool:
+    try:
+        result = collection.get(where={"source_file": source_file})
+        return bool(result and result.get("ids"))
+    except Exception:
+        return False
+
+
+def delete_file_drawers(collection: Any, source_file: str) -> int:
+    try:
+        result = collection.get(where={"source_file": source_file})
+        ids = result.get("ids", []) if result else []
+        if ids:
+            collection.delete(ids=ids)
+        return len(ids)
+    except Exception:
+        return 0
+
+
 def _repair_collection(palace_path: str) -> chromadb.Collection | None:
-    """尝试修复损坏的 ChromaDB：备份旧数据，创建新集合。
-    修复后需要重新 sync 才能恢复数据。
+    """Attempt to repair a corrupted ChromaDB: back up old data, create new collection.
+    After repair, sync_manager must be run to restore data.
     """
     import shutil
 
@@ -243,15 +347,17 @@ def _repair_collection(palace_path: str) -> chromadb.Collection | None:
     try:
         if path.exists():
             shutil.move(str(path), str(backup))
-            logger.info(f"已备份损坏数据到: {backup}")
-            logger.info("修复后请运行 sync_manager.py --all 重新同步数据")
+            logger.info("Backed up damaged data to: %s", backup)
+            logger.info("After repair, run sync_manager.py --all to resync data")
 
         path.mkdir(parents=True, exist_ok=True)
         client = chromadb.PersistentClient(path=str(path))
+        ef = get_cached_ef()
         return client.get_or_create_collection(
             name=COLLECTION_NAME,
             metadata={"hnsw:space": "cosine"},
+            embedding_function=ef,
         )
     except Exception as e:
-        logger.error(f"修复失败（可能文件被锁定）: {e}")
+        logger.error("Repair failed (files may be locked): %s", e)
         return None

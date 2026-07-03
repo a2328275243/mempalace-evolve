@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: "DreamSeed Community Discord"
+    url: https://discord.gg/dreamseed
+    about: "Ask questions and discuss with the community"
+  - name: "Documentation"
+    url: https://github.com/a2328275243/mempalace-evolve/tree/master/docs
+    about: "Read the docs before opening an issue"

@@ -87,6 +87,15 @@ class MemPalace:
         self._working_memory: list[dict] = []
         self._working_memory_topic: str = ""
 
+    def __enter__(self):
+        """Context manager entry."""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit: auto-close."""
+        self.close()
+        return False
+
         if auto_evolve:
             self._start_auto_evolve(evolve_interval)
 
@@ -110,6 +119,8 @@ class MemPalace:
         memory_type: str | None = None,
         metadata: dict[str, Any] | None = None,
         source: str = "",
+        ttl: int | None = None,
+        tags: list[str] | None = None,
     ) -> str:
         """Store a memory in the palace.
 
@@ -136,6 +147,22 @@ class MemPalace:
         # Auto-classify memory type based on room
         mtype = memory_type or _ROOM_TYPE_MAP.get(room, EPISODIC)
 
+        # Dedup: check if identical content+room already exists
+        dedup_col = self._get_collection()
+        if dedup_col is not None:
+            try:
+                existing = dedup_col.get(
+                    where={"$and": [{"wing": self._wing}, {"room": room}]},
+                    include=["documents", "metadatas"],
+                )
+                if existing and existing.get("documents"):
+                    for ex_id, ex_doc in zip(existing.get("ids", []), existing["documents"]):
+                        if ex_doc == content:
+                            return ex_id
+            except Exception:
+                pass  # Dedup check is best-effort
+
+
         collection = self._get_collection()
         if collection is None:
             raise StorageError("Failed to initialize ChromaDB collection")
@@ -145,6 +172,15 @@ class MemPalace:
         extra_meta["memory_type"] = mtype
         extra_meta["recall_count"] = extra_meta.get("recall_count", 0)
         extra_meta["cross_wing_hits"] = extra_meta.get("cross_wing_hits", 0)
+
+        # TTL: auto-expire after ttl seconds
+        if ttl is not None:
+            expire_at = datetime.now(timezone.utc).timestamp() + ttl
+            extra_meta["expire_at"] = expire_at
+
+        # RBAC-style tags for access control labels
+        if tags:
+            extra_meta["tags"] = ",".join(tags)
 
         # --- Contradiction detection: check if new memory conflicts with existing ---
         if mtype == SEMANTIC and room in ("decisions", "config", "architecture"):
@@ -683,6 +719,54 @@ class MemPalace:
         kg = self._get_kg()
         kg.add_triple(subject, predicate, obj)
 
+    def import_triples(self, triples: list[dict]) -> dict:
+        """Import multiple triples in a batch operation.
+
+        Args:
+            triples: List of triples, each with subject, predicate, object, etc.
+
+        Returns:
+            {"added": int, "skipped": int, "total": int}
+        """
+        kg = self._get_kg()
+        return kg.import_triples(triples)
+
+    def find_entity_by_fuzzy(self, name: str, threshold: float = 0.6) -> list[dict]:
+        """Fuzzy-match entity names, useful for 'did you mean?' scenarios.
+
+        Args:
+            name: Entity name to search for.
+            threshold: Minimum similarity ratio (0-1).
+
+        Returns:
+            List of matching entities with name, type, and similarity.
+        """
+        kg = self._get_kg()
+        return kg.find_entity_by_fuzzy(name, threshold=threshold)
+
+    def graph_traverse(self, start_entity: str, max_depth: int = 2, direction: str = "both") -> list[dict]:
+        """Traverse the knowledge graph from a starting entity using BFS.
+
+        Args:
+            start_entity: Name of the starting entity.
+            max_depth: Maximum traversal depth (default 2).
+            direction: "outgoing", "incoming", or "both".
+
+        Returns:
+            List of edges with depth, subject, predicate, object.
+        """
+        kg = self._get_kg()
+        return kg.graph_traverse(start_entity, max_depth=max_depth, direction=direction)
+
+    def kg_stats(self) -> dict:
+        """Return knowledge graph statistics.
+
+        Returns:
+            {"entities": int, "triples": int, "current_facts": int, "expired_facts": int, "relationship_types": list}
+        """
+        kg = self._get_kg()
+        return kg.stats()
+
     def query_entity(self, entity: str, direction: str = "both") -> list[dict]:
         """Query knowledge graph for entity relationships."""
         kg = self._get_kg()
@@ -779,6 +863,13 @@ class MemPalace:
     # ------------------------------------------------------------------
     # Internals
     # ------------------------------------------------------------------
+
+
+    def close(self) -> None:
+        """Release resources held by this palace instance."""
+        self._chroma = None
+        self._kg = None
+        self.stop_auto_evolve()
 
     def _get_collection(self):
         if self._chroma is None:
@@ -901,6 +992,242 @@ class MemPalace:
         )
         self._evolve_thread.start()
         logger.info("Auto-evolve started (interval=%ds)", interval)
+
+    def batch_remember(
+        self,
+        memories: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Store multiple memories in a single batch operation.
+
+        Args:
+            memories: List of memory dicts, each with:
+                - content (str, required)
+                - room (str, default "general")
+                - metadata (dict, optional)
+                - source (str, optional)
+                - ttl (int, seconds until expiry, optional)
+                - tags (list[str], optional)
+
+        Returns:
+            {"added": int, "skipped": int, "ids": list[str]}
+        """
+        from mempalace_evolve.core.chroma_helper import batch_add_drawers, _make_drawer_id
+        import hashlib
+
+        collection = self._get_collection()
+        if collection is None:
+            return {"added": 0, "skipped": 0, "ids": []}
+
+        drawers = []
+        ids = []
+        for mem in memories:
+            content_text = str(mem.get("content", ""))
+            if not content_text.strip():
+                continue
+            room = str(mem.get("room", "general"))
+            meta = dict(mem.get("metadata") or {})
+            source = str(mem.get("source", ""))
+
+            mtype = meta.get("memory_type") or _ROOM_TYPE_MAP.get(room, EPISODIC)
+            meta["memory_type"] = mtype
+            meta["recall_count"] = meta.get("recall_count", 0)
+            meta["cross_wing_hits"] = meta.get("cross_wing_hits", 0)
+
+            ttl_val = mem.get("ttl")
+            if ttl_val is not None:
+                meta["expire_at"] = datetime.now(timezone.utc).timestamp() + int(ttl_val)
+
+            tags_val = mem.get("tags")
+            if tags_val:
+                meta["tags"] = ",".join(tags_val)
+
+            content_hash = hashlib.md5(content_text.encode()).hexdigest()[:8]
+            source_key = source or f"batch_{content_hash}"
+
+            drawers.append({
+                "wing": self._wing,
+                "room": room,
+                "content": content_text,
+                "source_file": source_key,
+                "chunk_index": 0,
+                "added_by": "sdk_batch",
+                "extra_meta": meta,
+            })
+            ids.append(_make_drawer_id(self._wing, room, source_key, 0))
+
+        added, skipped = batch_add_drawers(collection, drawers)
+        return ids
+
+    def batch_forget(self, drawer_ids):
+        """Delete multiple memories in a single batch operation."""
+        collection = self._get_collection()
+        if collection is None:
+            return 0
+        if not drawer_ids:
+            return 0
+        try:
+            collection.delete(ids=drawer_ids)
+            return len(drawer_ids)
+        except Exception:
+            return 0
+
+    def fuzzy_search(
+        self,
+        query: str,
+        *,
+        limit: int = 10,
+        room: str | None = None,
+        threshold: float = 0.6,
+        metadata_filter: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Hybrid search: semantic vector search + metadata filtering.
+
+        Unlike recall(), this returns raw results without KG expansion,
+        cross-wing tracking, or working memory cache. Useful for programmatic
+        queries where you want precise control over filtering.
+
+        Args:
+            query: Search query text.
+            limit: Max results.
+            room: Optional room filter.
+            threshold: Similarity threshold (0-1, lower = stricter).
+            metadata_filter: Additional metadata filter dict.
+
+        Returns:
+            List of matching memories.
+        """
+        collection = self._get_collection()
+        if collection is None:
+            return []
+
+        where_clause: dict = {"wing": self._wing}
+        if room:
+            where_clause = {"$and": [{"wing": self._wing}, {"room": room}]}
+        if metadata_filter:
+            if "$and" in where_clause:
+                for k, v in metadata_filter.items():
+                    where_clause["$and"].append({k: v})
+            else:
+                combined: dict = {"$and": [where_clause]}
+                for k, v in metadata_filter.items():
+                    combined["$and"].append({k: v})
+                where_clause = combined
+
+        try:
+            results = collection.query(
+                query_texts=[query],
+                n_results=limit,
+                where=where_clause,
+            )
+        except Exception as e:
+            logger.warning("fuzzy_search failed: %s", e)
+            return []
+
+        output = []
+        if results and results.get("documents"):
+            docs = results["documents"][0] or []
+            metas = results["metadatas"][0] or [{}] * len(docs)
+            dists = results["distances"][0] or [0.0] * len(docs)
+            for doc, meta, dist in zip(docs, metas, dists):
+                if dist <= threshold:
+                    output.append({
+                        "content": doc,
+                        "metadata": meta,
+                        "distance": dist,
+                    })
+        return output
+
+    def recent(
+        self,
+        *,
+        limit: int = 20,
+        room: str | None = None,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        """Retrieve the most recently stored memories.
+
+        Uses filed_at metadata for sorting (most recent first).
+
+        Args:
+            limit: Max results.
+            room: Optional room filter.
+            offset: Pagination offset.
+
+        Returns:
+            List of recent memories.
+        """
+        collection = self._get_collection()
+        if collection is None:
+            return []
+
+        where_clause: dict = {"wing": self._wing}
+        if room:
+            where_clause = {"$and": [{"wing": self._wing}, {"room": room}]}
+
+        try:
+            results = collection.get(
+                where=where_clause,
+                limit=limit + offset,
+                include=["metadatas", "documents"],
+            )
+        except Exception as e:
+            logger.warning("recent failed: %s", e)
+            return []
+
+        output = []
+        if results and results.get("ids"):
+            for i, doc_id in enumerate(results["ids"]):
+                meta = results["metadatas"][i] if results["metadatas"] else {}
+                doc = results["documents"][i] if results["documents"] else ""
+                output.append({
+                    "id": doc_id,
+                    "content": doc,
+                    "metadata": meta,
+                    "filed_at": meta.get("filed_at", ""),
+                })
+            output.sort(key=lambda x: x.get("filed_at", ""), reverse=True)
+        return output[offset:offset + limit]
+
+    def search_by_metadata(
+        self,
+        filter: dict[str, Any],
+        *,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        """Search memories by exact metadata field matching.
+
+        Args:
+            filter: Metadata filter dict.
+            limit: Max results.
+
+        Returns:
+            List of matching memories.
+        """
+        collection = self._get_collection()
+        if collection is None:
+            return []
+
+        try:
+            results = collection.get(
+                where=filter,
+                limit=limit,
+                include=["metadatas", "documents"],
+            )
+        except Exception as e:
+            logger.warning("search_by_metadata failed: %s", e)
+            return []
+
+        output = []
+        if results and results.get("ids"):
+            for i, doc_id in enumerate(results["ids"]):
+                meta = results["metadatas"][i] if results["metadatas"] else {}
+                doc = results["documents"][i] if results["documents"] else ""
+                output.append({
+                    "id": doc_id,
+                    "content": doc,
+                    "metadata": meta,
+                })
+        return output
 
     def stop_auto_evolve(self):
         """Stop the background auto-evolve thread."""

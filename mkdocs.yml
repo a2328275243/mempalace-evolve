@@ -1,0 +1,65 @@
+site_name: MemPalace Evolve
+site_description: Self-evolving memory palace for AI agents
+site_author: DreamSeed
+repo_url: https://github.com/a2328275243/mempalace-evolve
+repo_name: a2328275243/mempalace-evolve
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.expand
+    - search.highlight
+    - content.code.copy
+
+nav:
+  - Home: index.md
+  - Quick Start: quickstart.md
+  - API Reference: api-reference.md
+  - Architecture: architecture.md
+  - Examples:
+      - Basic Usage: examples/basic_usage.md
+      - Evolution Pipeline: examples/evolution_demo.md
+      - REST API: examples/rest_api_usage.md
+      - LangChain: examples/langchain_integration.md
+  - Roadmap: roadmap.md
+  - Vision: vision.md
+  - Contributing: contributing.md
+  - Changelog: changelog.md
+  - Security: security.md
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - admonition
+  - footnotes
+  - toc:
+      permalink: true
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            show_source: true
+            heading_level: 2
