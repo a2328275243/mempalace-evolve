@@ -18,14 +18,19 @@ class TestBatchAPI:
             {"content": "Use FastAPI for REST API", "room": "architecture"},
             {"content": "数据库用PostgreSQL", "room": "decisions"},
         ]
-        ids = palace.batch_remember(items)
+        result = palace.batch_remember(items)
+        ids = result["ids"]
+        assert result["added"] == 3
+        assert result["skipped"] == 0
         assert len(ids) == 3
         assert all(isinstance(did, str) and did for did in ids)
         assert len(set(ids)) == 3  # All unique
 
     def test_batch_remember_empty(self, palace):
-        ids = palace.batch_remember([])
-        assert ids == []
+        result = palace.batch_remember([])
+        assert result["ids"] == []
+        assert result["added"] == 0
+        assert result["skipped"] == 0
 
     def test_batch_remember_invalid_skipped(self, palace):
         items = [
@@ -33,25 +38,29 @@ class TestBatchAPI:
             {"content": "", "room": "general"},  # Empty — should be skipped
             {"content": "Another valid one", "room": "decisions"},
         ]
-        ids = palace.batch_remember(items)
-        # Empty content raises ValidationError and gets "" placeholder
+        result = palace.batch_remember(items)
+        # Empty content produces placeholder ID
+        assert result["added"] == 2
+        ids = result["ids"]
         assert len(ids) == 3
-        assert ids[1] == ""  # Failed item
+        assert ids[0] != ""
+        assert ids[1] == ""  # placeholder for empty content
+        assert ids[2] != ""
 
     def test_batch_forget(self, palace):
-        ids = palace.batch_remember([
+        result = palace.batch_remember([
             {"content": "Memory A", "room": "general"},
             {"content": "Memory B", "room": "general"},
         ])
-        deleted = palace.batch_forget(ids)
+        deleted = palace.batch_forget(result["ids"])
         assert deleted == 2
 
     def test_batch_forget_partial(self, palace):
-        ids = palace.batch_remember([
+        result = palace.batch_remember([
             {"content": "Only one to keep"},
         ])
         # Some implementations may succeed on delete of nonexistent IDs
-        deleted = palace.batch_forget(ids + ["drawer_fake_id_never_exists"])
+        deleted = palace.batch_forget(result["ids"] + ["drawer_fake_id_never_exists"])
         assert deleted >= 1  # At least the real one was deleted
 
 # ======================================================================
@@ -188,11 +197,11 @@ class TestPerformance:
 
         # Batch
         start = time.time()
-        ids_batch = palace.batch_remember(items)
+        result = palace.batch_remember(items)
         batch_time = time.time() - start
 
         # Cleanup
-        palace.batch_forget(ids_batch)
+        palace.batch_forget(result["ids"])
 
         # Individual
         start = time.time()
