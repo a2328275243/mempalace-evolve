@@ -1,4 +1,4 @@
-"""MCP Server adapter — lets Claude Code / Cursor / any MCP client use MemPalace.
+﻿"""MCP Server adapter — lets Claude Code / Cursor / any MCP client use MemPalace.
 
 Setup in Claude Code:
     # ~/.claude/settings.json
@@ -108,6 +108,62 @@ def create_mcp_server(palace_path: str | None = None, wing: str = "global"):
         return json.dumps({"entity": entity, "relations": rels}, ensure_ascii=False)
 
     @mcp.tool()
+    def query_entity_v2(entity: str, as_of: str = "") -> str:
+        """Query knowledge graph returning structured result with separate
+        incoming/outgoing lists.
+
+        Args:
+            entity: Entity name to query.
+            as_of: Optional date string for temporal filtering (ISO format).
+        """
+        result = palace.query_entity_v2(entity, as_of=as_of or None)
+        return json.dumps(result, ensure_ascii=False, default=str)
+
+    @mcp.tool()
+    def query_path(start_entity: str, end_entity: str, max_depth: int = 4) -> str:
+        """Find shortest path between two entities in the knowledge graph.
+
+        Args:
+            start_entity: Name of the starting entity.
+            end_entity: Name of the target entity.
+            max_depth: Maximum traversal depth (default 4).
+        """
+        path = palace.query_path(start_entity, end_entity, max_depth=max_depth)
+        return json.dumps({"path": path, "length": len(path)}, ensure_ascii=False, default=str)
+
+    @mcp.tool()
+    def recall_stream(query: str, limit: int = 5, room: str = "", threshold: float = 0.8, hybrid: bool = True) -> str:
+        """Stream recall results as a generator (returned as a list).
+
+        Same semantics as recall(), but yields results one-by-one with
+        streaming metadata for real-time display in chat interfaces.
+
+        Args:
+            query: Natural language search query.
+            limit: Max results to yield (default 5).
+            room: Optional room filter.
+            threshold: Max distance (0-1, lower = more similar).
+            hybrid: If True, expand via KG relationships.
+        """
+        results = list(palace.recall_stream(
+            query, limit=limit,
+            room=room or None,
+            threshold=threshold,
+            hybrid=hybrid,
+        ))
+        output = []
+        for r in results:
+            item = {
+                "content": r.get("content", ""),
+                "room": r.get("metadata", {}).get("room", ""),
+                "distance": round(r.get("distance", 0), 4),
+            }
+            if "_stream_meta" in r:
+                item["_stream_meta"] = r["_stream_meta"]
+            output.append(item)
+        return json.dumps({"results": output, "count": len(output)}, ensure_ascii=False)
+
+    @mcp.tool()
     def forget(memory_id: str) -> str:
         """Delete a specific memory by its ID.
 
@@ -141,4 +197,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

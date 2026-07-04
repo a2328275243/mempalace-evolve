@@ -1,4 +1,4 @@
-"""REST API adapter — universal HTTP interface for any agent.
+﻿"""REST API adapter — universal HTTP interface for any agent.
 
 Start with:
     mempalace-server --port 8765
@@ -26,8 +26,8 @@ def create_app(palace_path: str | None = None, wing: str = "global", api_key: st
     """
     try:
         from fastapi import FastAPI, HTTPException, Request
-        from fastapi.responses import JSONResponse
-        from pydantic import BaseModel
+        from fastapi.responses import JSONResponse, StreamingResponse
+        from pydantic import BaseModel, Field
     except ImportError:
         raise ImportError(
             "REST API requires fastapi. Install with: pip install mempalace-evolve[api]"
@@ -40,7 +40,7 @@ def create_app(palace_path: str | None = None, wing: str = "global", api_key: st
     _write_lock = threading.Lock()
     app = FastAPI(
         title="MemPalace Evolve API",
-        version="0.1.0",
+        version="0.2.0",
         description="Self-evolving memory palace for AI agents",
     )
 
@@ -55,6 +55,8 @@ def create_app(palace_path: str | None = None, wing: str = "global", api_key: st
             if not secrets.compare_digest(key, api_key):
                 return JSONResponse(status_code=401, content={"error": "Invalid API key"})
             return await call_next(request)
+
+    # ── pydantic models ──────────────────────────────────────────────────
 
     class RememberRequest(BaseModel):
         content: str
@@ -74,6 +76,46 @@ def create_app(palace_path: str | None = None, wing: str = "global", api_key: st
 
     class EvolveRequest(BaseModel):
         transcript: str | None = None
+
+    class DigestRequest(BaseModel):
+        messages: list[dict] | None = None
+        transcript: str | None = None
+
+    class QueryEntityV2Request(BaseModel):
+        entity: str
+        as_of: str | None = None
+
+    class QueryPathRequest(BaseModel):
+        start_entity: str
+        end_entity: str
+        max_depth: int = 4
+
+    class RecallStreamRequest(BaseModel):
+        query: str
+        limit: int = 5
+        room: str | None = None
+        threshold: float = 0.8
+        hybrid: bool = True
+
+    class ScoreRequest(BaseModel):
+        pass
+
+    class TopMemoriesRequest(BaseModel):
+        n: int = 10
+
+    class FindSimilarRequest(BaseModel):
+        content: str
+        room: str | None = None
+        threshold: float = 0.85
+
+    class MarkReviewedRequest(BaseModel):
+        drawer_id: str
+
+    class SnoozeRequest(BaseModel):
+        drawer_id: str
+        days: int = 1
+
+    # ── existing endpoints ───────────────────────────────────────────────
 
     @app.post("/remember")
     def remember(req: RememberRequest):
@@ -107,15 +149,97 @@ def create_app(palace_path: str | None = None, wing: str = "global", api_key: st
         results = palace.query_entity(entity, direction=direction)
         return {"entity": entity, "relations": results}
 
+    # ── NEW: query_entity_v2 ────────────────────────────────────────────
+
+    @app.post("/kg/query_v2")
+    def query_entity_v2_endpoint(req: QueryEntityV2Request):
+        """Structured entity query with separate incoming/outgoing lists."""
+        result = palace.query_entity_v2(req.entity, as_of=req.as_of)
+        return result
+
+    # ── NEW: query_path ─────────────────────────────────────────────────
+
+    @app.post("/kg/path")
+    def query_path_endpoint(req: QueryPathRequest):
+        """Shortest path between two entities in the knowledge graph."""
+        path = palace.query_path(req.start_entity, req.end_entity, max_depth=req.max_depth)
+        return {"path": path, "length": len(path)}
+
+    # ── NEW: recall_stream (SSE) ────────────────────────────────────────
+
+    @app.post("/recall_stream")
+    async def recall_stream_endpoint(req: RecallStreamRequest):
+        """Stream recall results via SSE (Server-Sent Events)."""
+
+        async def event_generator():
+            for item in palace.recall_stream(
+                req.query,
+                limit=req.limit,
+                room=req.room,
+                threshold=req.threshold,
+                hybrid=req.hybrid,
+            ):
+                yield f"data: {__import__('json').dumps(item, ensure_ascii=False, default=str)}\n\n"
+            yield "data: [DONE]\n\n"
+
+        return StreamingResponse(
+            event_generator(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
+    # ── NEW: FSRS / spaced repetition endpoints ─────────────────────────
+
+    @app.get("/review/due")
+    def get_due_for_review():
+        """Get all memories due for spaced repetition review."""
+        due = palace.get_due_for_review()
+        return {"due": due, "count": len(due)}
+
+    @app.post("/review/mark")
+    def mark_reviewed_endpoint(req: MarkReviewedRequest):
+        """Mark a memory as reviewed (FSRS state update)."""
+        ok = palace.mark_reviewed(req.drawer_id)
+        if not ok:
+            raise HTTPException(404, "Memory not found or review failed")
+        return {"status": "reviewed", "drawer_id": req.drawer_id}
+
+    @app.post("/review/snooze")
+    def snooze_endpoint(req: SnoozeRequest):
+        """Snooze a memory for N days."""
+        ok = palace.snooze_memory(req.drawer_id, days=req.days)
+        if not ok:
+            raise HTTPException(404, "Memory not found")
+        return {"status": "snoozed", "drawer_id": req.drawer_id, "days": req.days}
+
+    # ── NEW: scoring / importance ───────────────────────────────────────
+
+    @app.post("/score")
+    def score_memories_endpoint():
+        """Run auto-scoring across all memories."""
+        with _write_lock:
+            result = palace.score_memories()
+        return result
+
+    @app.post("/top")
+    def top_memories_endpoint(req: TopMemoriesRequest):
+        """Get top N most important memories."""
+        top = palace.top_memories(n=req.n)
+        return {"top": top, "count": len(top)}
+
+    @app.post("/similar")
+    def find_similar_endpoint(req: FindSimilarRequest):
+        """Find memories semantically similar to given content."""
+        similar = palace.find_similar(req.content, room=req.room, threshold=req.threshold)
+        return {"similar": similar, "count": len(similar)}
+
+    # ── existing endpoints ───────────────────────────────────────────────
+
     @app.post("/evolve")
     def evolve(req: EvolveRequest):
         with _write_lock:
             report = palace.evolve(transcript=req.transcript)
         return report
-
-    class DigestRequest(BaseModel):
-        messages: list[dict] | None = None
-        transcript: str | None = None
 
     @app.post("/digest")
     def digest(req: DigestRequest):
@@ -147,3 +271,4 @@ def serve(host: str = "0.0.0.0", port: int = 8765, palace_path: str | None = Non
 
     app = create_app(palace_path, api_key=api_key)
     uvicorn.run(app, host=host, port=port)
+

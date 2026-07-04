@@ -175,8 +175,8 @@ class MemPalace:
                     for ex_id, ex_doc in zip(existing.get("ids", []), existing["documents"]):
                         if ex_doc == content:
                             return ex_id
-            except Exception:
-                pass  # Dedup check is best-effort
+            except Exception as _e:
+                logger.debug("Dedup check failed: %s", _e)
 
 
         collection = self._get_collection()
@@ -281,7 +281,8 @@ class MemPalace:
                 meta = data["metadatas"][0]
                 interval_idx = int(meta.get("interval_index", 0))
                 return mark_reviewed(collection, drawer_id, interval_idx)
-        except Exception:
+        except Exception as _e:
+            logger.debug("Snooze failed", exc_info=_e)
             pass
         return mark_reviewed(collection, drawer_id, 0)
 
@@ -428,8 +429,8 @@ class MemPalace:
                             "source": "procedural_global",
                         })
                         seen_ids.add(did)
-        except Exception:
-            pass  # procedural search is best-effort
+        except Exception as _e:
+            logger.debug("Procedural search failed: %s", _e)
 
         # --- Feedback loop: touch recalled memories ---
         if output:
@@ -437,8 +438,8 @@ class MemPalace:
             try:
                 from mempalace_evolve.core.lifecycle import touch_drawers
                 touch_drawers(collection, recalled_ids)
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("Touch-drawers failed", exc_info=_e)
 
         # --- Hybrid: expand via knowledge graph ---
         if hybrid and output:
@@ -464,8 +465,8 @@ class MemPalace:
             hits = int(meta.get("cross_wing_hits", 0)) + 1
             meta["cross_wing_hits"] = hits
             collection.update(ids=[drawer_id], metadatas=[meta])
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("Silent exception", exc_info=_e)
 
     def _compute_recall_score(self, distance: float, meta: dict) -> float:
         """Compute composite recall score: relevance + recency - stale penalty.
@@ -550,8 +551,8 @@ class MemPalace:
                     meta["superseded_at"] = datetime.now(timezone.utc).isoformat()
                     collection.update(ids=[did], metadatas=[meta])
                     logger.debug("Marked memory %s as superseded", did[:20])
-        except Exception:
-            pass  # contradiction detection is best-effort
+        except Exception as _e:
+            logger.debug("Contradiction detection skipped: %s", _e)
 
     def forget(self, drawer_id: str) -> bool:
         """Delete a memory by ID."""
@@ -561,7 +562,8 @@ class MemPalace:
         try:
             collection.delete(ids=[drawer_id])
             return True
-        except Exception:
+        except Exception as _e:
+            logger.warning("Operation failed: %s", _e)
             return False
 
     def digest(self, conversation: str | list[dict]) -> dict:
@@ -714,15 +716,15 @@ class MemPalace:
                 for meta in all_items["metadatas"]:
                     room = meta.get("room", "general")
                     result["rooms"][room] = result["rooms"].get(room, 0) + 1
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("Silent exception", exc_info=_e)
 
         try:
             kg = self._get_kg()
             entities = kg.get_all_entity_names()
             result["kg_entities"] = len(entities) if entities else 0
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("Silent exception", exc_info=_e)
 
         return result
 
@@ -1011,7 +1013,8 @@ class MemPalace:
             collection = self._get_collection()
             if not kg or not collection:
                 return []
-        except Exception:
+        except Exception as _e:
+            logger.warning("Query failed: %s", _e)
             return []
 
         # Extract entity names from result content (simple: use words > 3 chars)
@@ -1036,7 +1039,8 @@ class MemPalace:
                         src = rel.get("source_closet", "")
                         if src and src not in seen_ids:
                             related_ids.add(src)
-            except Exception:
+            except Exception as _e:
+                logger.debug("Item skipped", exc_info=_e)
                 continue
 
         if not related_ids:
@@ -1056,8 +1060,8 @@ class MemPalace:
                             "distance": -1,  # KG-expanded, no vector distance
                             "source": "kg_expansion",
                         })
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("Silent exception", exc_info=_e)
 
         return extra
 
@@ -1169,7 +1173,8 @@ class MemPalace:
         try:
             collection.delete(ids=drawer_ids)
             return len(drawer_ids)
-        except Exception:
+        except Exception as _e:
+            logger.debug("Count failed: %s", _e)
             return 0
 
     def fuzzy_search(
