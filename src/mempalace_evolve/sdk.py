@@ -15,7 +15,7 @@ import logging
 import math
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Self
 
 logger = logging.getLogger("mempalace_evolve")
 
@@ -102,11 +102,11 @@ class MemPalace:
         if auto_evolve:
             self._start_auto_evolve(evolve_interval)
 
-    def __enter__(self):
+    def __enter__(self) -> Self:
         """Context manager entry."""
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         """Context manager exit: auto-close."""
         self.close()
         return False
@@ -118,6 +118,10 @@ class MemPalace:
     @property
     def wing(self) -> str:
         return self._wing
+
+    def __repr__(self) -> str:
+        """Human-readable representation of this palace instance."""
+        return f"<MemPalace wing={self._wing!r} path={self._path}>"
 
     # ------------------------------------------------------------------
     # Core API
@@ -783,6 +787,60 @@ class MemPalace:
         """Query knowledge graph for entity relationships."""
         kg = self._get_kg()
         return kg.query_entity(entity, direction=direction)
+    def query_entity_v2(self, entity: str, as_of: str = None) -> dict:
+        """Query knowledge graph returning structured result with separate incoming/outgoing lists.
+
+        Args:
+            entity: Entity name to query.
+            as_of: Optional date string for temporal filtering.
+
+        Returns:
+            Dict with 'entity', 'outgoing', 'incoming' keys.
+        """
+        kg = self._get_kg()
+        return kg.query_entity_v2(entity, as_of=as_of)
+
+    def query_path(self, start_entity: str, end_entity: str, max_depth: int = 4) -> list[dict]:
+        """Find shortest path between two entities in the knowledge graph.
+
+        Args:
+            start_entity: Name of the starting entity.
+            end_entity: Name of the target entity.
+            max_depth: Maximum traversal depth.
+
+        Returns:
+            List of edge dicts forming the path, or empty list if no path found.
+        """
+        kg = self._get_kg()
+        return kg.query_path(start_entity, end_entity, max_depth=max_depth)
+
+    def recall_stream(self, query: str, *, limit: int = 5, room: str | None = None,
+                     threshold: float = 0.8, hybrid: bool = True):
+        """Stream recall results as a generator.
+
+        Same semantics as recall(), but yields results one-by-one instead of
+        returning a batch list. Useful for real-time display in chat interfaces.
+
+        Args:
+            query: Natural language query.
+            limit: Max results to yield.
+            room: Optional room filter.
+            threshold: Max distance (0-1, lower = more similar).
+            hybrid: If True, expand via KG relationships.
+
+        Yields:
+            Dict with content, metadata, distance, _score, source.
+        """
+        results = self.recall(query, limit=limit, room=room,
+                              threshold=threshold, hybrid=hybrid)
+        total = len(results)
+        for i, item in enumerate(results):
+            if i > 0:
+                item['_stream_meta'] = {
+                    'index': i, 'total': total, 'is_last': i == total - 1,
+                }
+            yield item
+
 
     # ------------------------------------------------------------------
     # Evolution Pipeline
@@ -900,7 +958,7 @@ class MemPalace:
         """Backward-compatible alias for @property _collection."""
         return self._collection
 
-    def _ensure_initialized(self):
+    def _ensure_initialized(self) -> None:
         """Ensure all backend services (ChromaDB, KG) are initialized.
 
         This unified lifecycle hook replaces scattered ad-hoc initialization
@@ -1272,7 +1330,7 @@ class MemPalace:
                 })
         return output
 
-    def stop_auto_evolve(self):
+    def stop_auto_evolve(self) -> None:
         """Stop the background auto-evolve thread."""
         if self._evolve_stop:
             self._evolve_stop.set()

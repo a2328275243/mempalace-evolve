@@ -39,6 +39,51 @@ async def _get_pool(max_workers: int = 4) -> ThreadPoolExecutor:
     return _pool
 
 
+import asyncio
+import functools
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+def retry_on_error(max_retries: int = 3, base_delay: float = 0.5):
+    """Decorator: retry async method on transient errors (StorageError).
+
+    Exponential backoff: delay * 2**retry_count.
+    """
+
+    def decorator(func):
+        @functools.wraps(func)
+        async def wrapper(self, *args, **kwargs):
+            from mempalace_evolve.exceptions import StorageError
+
+            last_exc = None
+            for attempt in range(max_retries + 1):
+                try:
+                    return await func(self, *args, **kwargs)
+                except StorageError as e:
+                    last_exc = e
+                    if attempt < max_retries:
+                        delay = base_delay * (2**attempt)
+                        logger.warning(
+                            "Retry %d/%d for %s after %.1fs: %s",
+                            attempt + 1,
+                            max_retries,
+                            func.__name__,
+                            delay,
+                            e,
+                        )
+                        await asyncio.sleep(delay)
+                    else:
+                        raise
+            raise last_exc
+
+        return wrapper
+
+    return decorator
+
+
+
 class AsyncMemPalace:
     """Async wrapper around MemPalace with connection pooling.
 
@@ -150,6 +195,7 @@ class AsyncMemPalace:
     # Core memory operations (async wrappers)
     # ------------------------------------------------------------------
 
+    @retry_on_error()
     async def remember(
         self,
         content: str,
@@ -169,6 +215,7 @@ class AsyncMemPalace:
             source=source,
         )
 
+    @retry_on_error()
     async def recall(
         self,
         query: str,
@@ -188,10 +235,12 @@ class AsyncMemPalace:
             hybrid=hybrid,
         )
 
+    @retry_on_error()
     async def forget(self, memory_id: str) -> bool:
         """Remove a memory by ID."""
         return await self._run("forget", memory_id)
 
+    @retry_on_error()
     async def batch_remember(
         self,
         memories: list[dict[str, str]],
@@ -200,6 +249,7 @@ class AsyncMemPalace:
         """Store multiple memories in a single batch operation."""
         return await self._run("batch_remember", memories=memories, room=room)
 
+    @retry_on_error()
     async def batch_forget(
         self,
         memory_ids: list[str],
@@ -227,6 +277,7 @@ class AsyncMemPalace:
             valid_from=valid_from, valid_to=valid_to, confidence=confidence,
         )
 
+    @retry_on_error()
     async def query_entity(
         self,
         entity: str,

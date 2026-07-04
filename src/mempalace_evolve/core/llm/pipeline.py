@@ -540,7 +540,7 @@ def run_llm_pipeline(
 
     # Step 3: Consolidation
     try:
-        collection = palace._get_collection()
+        collection = palace._collection
         if collection and collection.count() > 1:
             # Get all memories from the collection
             all_items = collection.get(include=["documents", "metadatas"])
@@ -612,7 +612,7 @@ def run_llm_pipeline(
 
     # Step 4: Daily Summary
     try:
-        collection = palace._get_collection()
+        collection = palace._collection
         if collection:
             from mempalace_evolve.core.consolidation import get_today_drawers
             today_memories = get_today_drawers(collection)

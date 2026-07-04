@@ -126,7 +126,7 @@ def score_all_memories(palace) -> dict[str, Any]:
     Returns:
         Dict with scores and stats.
     """
-    collection = palace._get_collection()
+    collection = palace._collection
     if not collection:
         return {"scored": 0, "errors": ["collection unavailable"]}
 
@@ -142,7 +142,7 @@ def score_all_memories(palace) -> dict[str, Any]:
         return {"scored": 0, "scores": []}
 
     # Get KG entity degrees
-    kg = palace._get_kg()
+    kg = palace._kg_store
     scores = []
     scored_count = 0
 

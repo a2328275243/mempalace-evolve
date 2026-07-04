@@ -69,7 +69,7 @@ class KnowledgeGraph:
             self._persistent_conn = None
 
     def _init_db(self):
-        conn = self._new_conn()
+        conn = self._conn()
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS entities (
                 id TEXT PRIMARY KEY,
@@ -722,4 +722,76 @@ class KnowledgeGraph:
                 "relationship_types": predicates,
             }
 
+
+
+
+    def query_path(self, start_entity: str, end_entity: str, max_depth: int = 4) -> list[dict]:
+        """Shortest path between two entities using BFS."""
+        start_id = self._entity_id(start_entity)
+        end_id = self._entity_id(end_entity)
+        with self._get_conn() as conn:
+            visited = {start_id}
+            parent = {}
+            queue = __import__("collections").deque([(start_id, 0)])
+            while queue:
+                node, depth = queue.popleft()
+                if depth >= max_depth:
+                    continue
+                rows = conn.execute(
+                    """SELECT 'outgoing' as dir, t.id, t.predicate, t.object as other_id, e.name as other_name
+                       FROM triples t JOIN entities e ON t.object = e.id WHERE t.subject = ?
+                       UNION ALL
+                       SELECT 'incoming' as dir, t.id, t.predicate, t.subject as other_id, e.name as other_name
+                       FROM triples t JOIN entities e ON t.subject = e.id WHERE t.object = ?""",
+                    (node, node),
+                ).fetchall()
+                for edge in rows:
+                    other_id = edge[3]
+                    if other_id in visited:
+                        continue
+                    visited.add(other_id)
+                    parent[other_id] = (node, {"direction": edge[0], "predicate": edge[2]})
+                    if other_id == end_id:
+                        path = []
+                        cur = end_id
+                        while cur in parent:
+                            p, info = parent[cur]
+                            path.append(info)
+                            cur = p
+                        path.reverse()
+                        return path
+                    queue.append((other_id, depth + 1))
+        return []
+
+    def query_entity_v2(self, name: str, as_of: str = None) -> dict:
+        """Query entity returning structured result with separate incoming/outgoing lists."""
+        result = {"entity": name, "outgoing": [], "incoming": []}
+        eid = self._entity_id(name)
+        with self._get_conn() as conn:
+            tf = ""
+            tp = []
+            if as_of:
+                tf = " AND (t.valid_from IS NULL OR t.valid_from \u003c= ?) AND (t.valid_to IS NULL OR t.valid_to \u003e= ?)"
+                tp = [as_of, as_of]
+            for row in conn.execute(
+                "SELECT t.predicate, o.name as obj_name, t.valid_from, t.valid_to, t.confidence, t.source_closet "
+                "FROM triples t JOIN entities o ON t.object = o.id WHERE t.subject = ?" + tf,
+                [eid] + tp,
+            ).fetchall():
+                result["outgoing"].append({
+                    "subject": name, "predicate": row[0], "object": row[1],
+                    "valid_from": row[2], "valid_to": row[3], "confidence": row[4],
+                    "source_closet": row[5], "current": row[3] is None,
+                })
+            for row in conn.execute(
+                "SELECT s.name as sub_name, t.predicate, t.valid_from, t.valid_to, t.confidence, t.source_closet "
+                "FROM triples t JOIN entities s ON t.subject = s.id WHERE t.object = ?" + tf,
+                [eid] + tp,
+            ).fetchall():
+                result["incoming"].append({
+                    "subject": row[0], "predicate": row[1], "object": name,
+                    "valid_from": row[2], "valid_to": row[3], "confidence": row[4],
+                    "source_closet": row[5], "current": row[3] is None,
+                })
+        return result
 
