@@ -1,4 +1,4 @@
-﻿"""CLI entry point for mempalace-evolve."""
+"""CLI entry point for mempalace-evolve."""
 
 from __future__ import annotations
 

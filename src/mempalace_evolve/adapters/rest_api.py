@@ -1,4 +1,4 @@
-﻿"""REST API adapter — universal HTTP interface for any agent.
+"""REST API adapter — universal HTTP interface for any agent.
 
 Start with:
     mempalace-server --port 8765

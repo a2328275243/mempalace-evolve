@@ -16,6 +16,7 @@ import math
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Self
+from mempalace_evolve.advanced_query import AdvancedQuery
 
 logger = logging.getLogger("mempalace_evolve")
 
@@ -97,6 +98,7 @@ class MemPalace:
         # Working memory: session-level cache to avoid repeated searches
         self._working_memory: list[dict] = []
         self._working_memory_topic: str = ""
+        self._advanced_query: AdvancedQuery | None = None
         self._auto_evolve = auto_evolve
         self._evolve_interval = evolve_interval
         if auto_evolve:
@@ -118,6 +120,13 @@ class MemPalace:
     @property
     def wing(self) -> str:
         return self._wing
+
+    @property
+    def advanced_query(self):
+        """Access the AdvancedQuery interface for hybrid search and complex filtering."""
+        if self._advanced_query is None:
+            self._advanced_query = AdvancedQuery(self)
+        return self._advanced_query
 
     def __repr__(self) -> str:
         """Human-readable representation of this palace instance."""
@@ -1396,6 +1405,89 @@ class MemPalace:
                 })
             output.sort(key=lambda x: x.get("filed_at", ""), reverse=True)
         return output[offset:offset + limit]
+
+    def hybrid_search(
+        self,
+        query: str,
+        *,
+        limit: int = 10,
+        room: str | None = None,
+        threshold: float = 0.7,
+        memory_types: list[str] | None = None,
+        tags: list[str] | None = None,
+        time_from: float | None = None,
+        time_to: float | None = None,
+        metadata_filter: dict[str, Any] | None = None,
+        expand_kg: bool = False,
+    ) -> list[dict[str, Any]]:
+        """Multi-faceted search combining vector search, metadata filtering, and KG expansion.
+
+        Convenience wrapper around AdvancedQuery.hybrid_search().
+
+        Args:
+            query: Natural language query.
+            limit: Max results.
+            room: Filter by room.
+            threshold: Max distance (0-1, lower = more similar).
+            memory_types: Filter by memory type(s): "semantic", "episodic", "procedural".
+            tags: Filter by tags.
+            time_from: Minimum filed_at timestamp (epoch seconds).
+            time_to: Maximum filed_at timestamp (epoch seconds).
+            metadata_filter: Additional metadata key-value filters.
+            expand_kg: If True, expand results via knowledge graph.
+
+        Returns:
+            List of matching memories with scores.
+        """
+        return self.advanced_query.hybrid_search(
+            query=query,
+            limit=limit,
+            room=room,
+            threshold=threshold,
+            memory_types=memory_types,
+            tags=tags,
+            time_from=time_from,
+            time_to=time_to,
+            metadata_filter=metadata_filter,
+            expand_kg=expand_kg,
+        )
+
+    def filter_by_metadata(
+        self,
+        *,
+        limit: int = 50,
+        room: str | None = None,
+        memory_types: list[str] | None = None,
+        tags: list[str] | None = None,
+        time_from: float | None = None,
+        time_to: float | None = None,
+        metadata_filter: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Pure metadata filter search (no semantic similarity).
+
+        Convenience wrapper around AdvancedQuery.filter_by_metadata().
+
+        Args:
+            limit: Max results.
+            room: Filter by room.
+            memory_types: Filter by memory type(s).
+            tags: Filter by tags.
+            time_from: Minimum filed_at timestamp.
+            time_to: Maximum filed_at timestamp.
+            metadata_filter: Additional metadata key-value filters.
+
+        Returns:
+            List of matching memories.
+        """
+        return self.advanced_query.filter_by_metadata(
+            limit=limit,
+            room=room,
+            memory_types=memory_types,
+            tags=tags,
+            time_from=time_from,
+            time_to=time_to,
+            metadata_filter=metadata_filter,
+        )
 
     def search_by_metadata(
         self,

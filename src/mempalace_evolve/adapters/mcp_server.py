@@ -1,4 +1,4 @@
-﻿"""MCP Server adapter — lets Claude Code / Cursor / any MCP client use MemPalace.
+"""MCP Server adapter — lets Claude Code / Cursor / any MCP client use MemPalace.
 
 Setup in Claude Code:
     # ~/.claude/settings.json

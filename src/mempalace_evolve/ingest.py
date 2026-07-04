@@ -1,4 +1,4 @@
-﻿"""Document ingestion subsystem for mempalace-evolve.
+"""Document ingestion subsystem for mempalace-evolve.
 
 Handles:
 - Scanning files in a directory
