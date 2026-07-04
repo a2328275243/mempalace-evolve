@@ -1,4 +1,4 @@
-﻿"""Tests for async_sdk.py — AsyncMemPalace async context manager and operations."""
+"""Tests for async_sdk.py — AsyncMemPalace async context manager and operations."""
 
 import asyncio
 from unittest.mock import MagicMock, patch, PropertyMock
@@ -29,7 +29,11 @@ def mock_palace():
     mock_sync.stats.return_value = {"total": 42}
     mock_sync.export.return_value = '{"data": "exported"}'
     mock_sync.evolve.return_value = {"cycles": 1}
-    mock_sync.batch_remember.return_value = ["mem-1", "mem-2"]
+    mock_sync.batch_remember.return_value = {"added": 2, "skipped": 0, "ids": ["mem-1", "mem-2"]}
+    # Auto-proxy methods (not explicitly defined in AsyncSDK)
+    mock_sync.fuzzy_search.return_value = [{"id": "1", "content": "hit"}]
+    mock_sync.recent.return_value = [{"id": "1"}, {"id": "2"}]
+    mock_sync.search_by_metadata.return_value = [{"id": "3", "content": "tagged"}]
     mock_sync.query_entity.return_value = [{"subject": "X"}]
     mock_sync.invalidate_triple.return_value = True
     mock_sync.start_auto_evolve.return_value = None
@@ -99,8 +103,9 @@ class TestAsyncMemPalace:
     @pytest.mark.asyncio
     async def test_batch_remember(self, mock_palace):
         async with AsyncMemPalace(wing="w") as palace:
-            ids = await palace.batch_remember([{"content": "a"}, {"content": "b"}])
-            assert len(ids) == 2
+            result = await palace.batch_remember([{"content": "a"}, {"content": "b"}])
+            assert result["added"] == 2
+            assert len(result["ids"]) == 2
             mock_palace.batch_remember.assert_called_once()
 
     @pytest.mark.asyncio
@@ -114,8 +119,8 @@ class TestAsyncMemPalace:
     @pytest.mark.asyncio
     async def test_remember_many(self, mock_palace):
         async with AsyncMemPalace(wing="w") as palace:
-            ids = await palace.remember_many([{"content": "x"}])
-            assert len(ids) == 2
+            result = await palace.remember_many([{"content": "x"}])
+            assert result["added"] == 2  # mock returns added=2
             mock_palace.batch_remember.assert_called_once()
 
     @pytest.mark.asyncio
@@ -188,6 +193,47 @@ class TestAsyncMemPalace:
 # ---------------------------------------------------------------------------
 # Module-level convenience functions
 # ---------------------------------------------------------------------------
+    # ================================================================
+    # Auto-proxy tests: methods not explicitly defined in AsyncSDK
+    # ================================================================
+
+    @pytest.mark.asyncio
+    async def test_auto_proxy_fuzzy_search(self, mock_palace):
+        mock_palace.fuzzy_search.return_value = [{"id": "1", "content": "Redis caching"}]
+        async with AsyncMemPalace(wing="w") as palace:
+            results = await palace.fuzzy_search("redis", limit=5)
+            assert isinstance(results, list)
+            assert len(results) > 0
+            mock_palace.fuzzy_search.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_auto_proxy_recent(self, mock_palace):
+        mock_palace.recent.return_value = [{"id": "1"}, {"id": "2"}]
+        async with AsyncMemPalace(wing="w") as palace:
+            results = await palace.recent(limit=10)
+            assert isinstance(results, list)
+            assert len(results) >= 2
+            mock_palace.recent.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_auto_proxy_search_by_metadata(self, mock_palace):
+        mock_palace.search_by_metadata.return_value = [{"id": "3", "content": "tagged"}]
+        async with AsyncMemPalace(wing="w") as palace:
+            results = await palace.search_by_metadata({"tags": "test-tag"}, limit=10)
+            assert isinstance(results, list)
+            mock_palace.search_by_metadata.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_auto_proxy_missing_method_raises(self):
+        """Calling a non-existent method should raise AttributeError."""
+        # Use real sync palace (not mock) to avoid MagicMock swallowing all attrs
+        palace = AsyncMemPalace.__new__(AsyncMemPalace)
+        palace.__init__(wing="test_missing")
+        # Close it immediately so _get_sync never creates real collection
+        await palace.close()
+        # For a real _get_sync() scenario, non_existent raises AttributeError
+        with pytest.raises(AttributeError):
+            _ = getattr(palace._get_sync(), "non_existent_method")
 
 class TestConvenienceFunctions:
     @pytest.mark.asyncio

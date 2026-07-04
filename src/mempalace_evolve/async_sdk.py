@@ -103,6 +103,41 @@ class AsyncMemPalace:
             )
         return self._sync_palace
 
+    def __getattr__(self, name: str) -> Any:
+        """Dynamically expose any sync SDK method as an async call.
+
+        Unrecognized attribute names are forwarded to the underlying sync palace
+        via the thread pool. This ensures all future sync-only methods are
+        automatically available without manual wrapping.
+
+        Args:
+            name: Method name to proxy.
+
+        Returns:
+            An async callable that delegates to the sync SDK's method.
+
+        Raises:
+            AttributeError: If the sync palace has no such attribute.
+        """
+        # Skip private lookups from async def names to avoid recursion
+        if name.startswith("_") and not name.startswith("__"):
+            raise AttributeError(name)
+
+        sync_palace = self._get_sync()
+        sync_method = getattr(sync_palace, name, None)
+        if sync_method is None or not callable(sync_method):
+            raise AttributeError(
+                f"AsyncMemPalace has no attribute {name!r} "
+                f"(and sync palace has no callable {name!r} either)"
+            )
+
+        async def _proxy(*a, **kw):
+            return await self._run(name, *a, **kw)
+
+        # Cache the proxy so subsequent lookups bypass __getattr__
+        setattr(self, name, _proxy)
+        return _proxy
+
     async def _run(self, method_name: str, *args, **kwargs) -> Any:
         """Offload a sync method call to the shared thread pool."""
         if self._closed:
