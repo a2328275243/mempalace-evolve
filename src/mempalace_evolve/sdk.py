@@ -1177,6 +1177,109 @@ class MemPalace:
             logger.debug("Count failed: %s", _e)
             return 0
 
+    
+
+    def batch_recall(
+        self,
+        queries: list[str],
+        *,
+        limit: int = 3,
+        room: str | None = None,
+        threshold: float = 0.8,
+    ) -> list[dict[str, Any]]:
+        """Bulk semantic recall: run multiple queries in a single batch.
+
+        Args:
+            queries: List of query strings (max 100).
+            limit: Max results per query.
+            room: Optional room filter applied to every query.
+            threshold: Max distance (lower = more similar).
+
+        Returns:
+            List of {query: str, memories: list[dict]}.
+        """
+        results: list[dict[str, Any]] = []
+        for q in queries[:100]:
+            memories = self.recall(q, limit=limit, room=room, threshold=threshold)
+            results.append({"query": q, "memories": memories})
+        return results
+
+    def iter_all(
+        self,
+        batch_size: int = 252,
+        *,
+        room: str | None = None,
+    ):
+        """Lazy iterator over all memories (paginated ChromaDB cursor).
+
+        Yields dicts {id, content, room, ...} in batches of `batch_size`.
+        Raises RuntimeError if the backend is not available.
+
+        Usage::
+
+            for batch in palace.iter_all(batch_size=100, room="decisions"):
+                for mem in batch:
+                    print(mem["content"])
+        """
+        collection = self._get_collection()
+        if collection is None:
+            raise RuntimeError("ChromaDB collection not available")
+        total = collection.count()
+        offset = 0
+        while offset < total:
+            try:
+                batch = collection.get(
+                    limit=batch_size,
+                    offset=offset,
+                    include=["metadatas", "documents"],
+                )
+            except Exception as exc:
+                logger.debug("iter_all batch failed at offset %s: %s", offset, exc)
+                offset += batch_size
+                continue
+
+            ids = batch.get("ids", [])
+            docs = batch.get("documents", [])
+            metas = batch.get("metadatas", [])
+            if not ids:
+                break
+            result_batch: list[dict[str, Any]] = []
+            for i, _id in enumerate(ids):
+                entry: dict[str, Any] = {"id": _id}
+                if i < len(docs) and docs[i]:
+                    entry["content"] = docs[i]
+                meta = {}
+                if i < len(metas) and metas[i]:
+                    meta = dict(metas[i])
+                entry["room"] = meta.get("room", "general")
+                entry["metadata"] = meta
+                if room and entry.get("room") != room:
+                    continue
+                result_batch.append(entry)
+            if result_batch:
+                yield result_batch
+            offset += batch_size
+
+    def iter_all_items(
+        self,
+        *,
+        room: str | None = None,
+    ):
+        """Flat iterator — yields individual memory dicts (not batches).
+
+        Convenience wrapper around iter_all for simple loops."""
+        for batch in self.iter_all(room=room):
+            yield from batch
+
+    def bulk_remember_typed(
+        self,
+        memories: list[dict[str, Any]],
+    ):
+        """Typed alias for batch_remember with Pydantic validation.
+
+        This is the v0.3.0 convention — prefer this for new code.
+        """
+        return self.batch_remember(memories)
     def fuzzy_search(
         self,
         query: str,

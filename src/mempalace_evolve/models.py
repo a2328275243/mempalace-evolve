@@ -176,3 +176,106 @@ class DoctorReport(BaseModel):
     chroma_ok: bool = True
     onnx_ok: bool = True
     issues: list[str] = Field(default_factory=list)
+# ---------------------------------------------------------------------------
+# Unified Data Model (Roadmap Month 2-3): Source, Chunk, WikiPage, Citation
+# ---------------------------------------------------------------------------
+
+class SourceID(str):
+    """Opaque source identifier: sha256(content, filename, ingest_time)."""
+
+
+class Citation(BaseModel):
+    """A reference that ties a generated fact or wiki section back to its source."""
+
+    source_id: str = Field(..., min_length=1)
+    chunk_ids: list[str] = Field(default_factory=list)
+    snippet: str = Field(default="", description="Brief excerpt for traceability")
+
+
+class Source(BaseModel):
+    """An ingested document (file, note, AI chat) that feeds the knowledge base."""
+
+    source_id: str = Field(..., min_length=1)
+    path: str = Field(..., min_length=1)
+    kind: str = Field(default="file", description="file | note | chat | web_page")
+    hash: str = Field(default="", description="Content hash for incremental indexing")
+    chunk_count: int = Field(default=0, ge=0)
+    last_indexed: datetime | None = None
+    last_modified: datetime | None = None
+    status: str = Field(
+        default="pending", description="pending | indexed | stale | archived"
+    )
+
+
+class Chunk(BaseModel):
+    """A contiguous slice of a source, stored as a vector drawer."""
+
+    chunk_id: str = Field(..., min_length=1)
+    source_id: str = Field(..., min_length=1)
+    content: str = Field(..., min_length=1)
+    start_line: int = Field(default=0, ge=0)
+    end_line: int = Field(default=0, ge=0)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class WikiPage(BaseModel):
+    """A generated wiki page built from promoted memories and sources."""
+
+    title: str = Field(..., min_length=1)
+    slug: str = Field(..., min_length=1)
+    sections: list[dict[str, str]] = Field(
+        default_factory=list, description="List of {heading, content, citations}"
+    )
+    citations: list[Citation] = Field(default_factory=list)
+    last_built: datetime | None = None
+    auto_generated: bool = Field(default=True)
+
+
+class IngestResult(BaseModel):
+    """Result of a single ingest operation."""
+
+    source_id: str
+    path: str
+    chunks_created: int = 0
+    chunks_skipped: int = 0
+    status: str = Field(default="ok", description="ok | skipped | error")
+    error: str | None = None
+
+
+class IngestSummary(BaseModel):
+    """Summary of a multi-file ingest batch."""
+
+    total_files: int = 0
+    indexed: int = 0
+    skipped: int = 0
+    errors: int = 0
+    results: list[IngestResult] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Bulk / Iterator models (v0.3.0)
+# ---------------------------------------------------------------------------
+
+class BatchRecallInput(BaseModel):
+    """Input for bulk semantic recall."""
+
+    queries: list[str] = Field(..., min_length=1, max_length=100)
+    limit: int = Field(default=3, ge=1, le=20)
+
+
+class BatchRecallResult(BaseModel):
+    """Result of a batch_recall call — list of (query → memories)."""
+
+    results: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Each entry: {query, memories: [{content, distance, ...}]}"
+    )
+
+
+class IterationProgress(BaseModel):
+    """Progress snapshot during a long-running iteration."""
+
+    total: int = 0
+    processed: int = 0
+    errors: int = 0
+    elapsed_seconds: float = 0.0

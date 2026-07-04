@@ -1,4 +1,4 @@
-"""CLI entry point for mempalace-evolve."""
+﻿"""CLI entry point for mempalace-evolve."""
 
 from __future__ import annotations
 
@@ -55,6 +55,20 @@ def main():
     p_setup.add_argument("--wing", default=None, help="Wing/project name")
     p_setup.add_argument("--palace", default=None, help="Palace storage path")
 
+
+    # mempalace ingest <directory> [--recursive] [--room ...] [--force]
+    p_ingest = sub.add_parser("ingest", help="Ingest files into memory palace")
+    p_ingest.add_argument("directory", help="Directory to scan for files")
+    p_ingest.add_argument("--recursive", action="store_true", default=True, help="Recurse subdirectories")
+    p_ingest.add_argument("--room", default="documents", help="Target room for chunks")
+    p_ingest.add_argument("--chunk-size", type=int, default=1000, help="Max chars per chunk")
+    p_ingest.add_argument("--force", action="store_true", help="Re-index all files")
+    p_ingest.add_argument("--palace", default=None, help="Palace path")
+
+    # mempalace sources list [--palace ...]
+    p_sources = sub.add_parser("sources", help="Tracked source documents")
+    p_sources.add_argument("action", nargs="?", default="list", choices=["list", "stats"], help="Action: list | stats")
+    p_sources.add_argument("--palace", default=None, help="Palace path")
     # mempalace export --format json --output memories.json
     p_exp = sub.add_parser("export", help="Export memories to JSON or Markdown")
     p_exp.add_argument("--format", choices=["json", "markdown"], default="json")
@@ -127,6 +141,38 @@ def main():
     elif args.command == "evolve":
         report = palace.evolve()
         print(f"Evolution: {report['promoted']} promoted, {report['dropped']} dropped")
+    elif args.command == "ingest":
+        from mempalace_evolve.ingest import ingest_directory
+        # Create a palace instance
+        palace_kwargs = {}
+        if args.palace:
+            palace_kwargs["palace_path"] = args.palace
+        from mempalace_evolve.sdk import MemPalace
+        p = MemPalace(**palace_kwargs)
+        summary = ingest_directory(
+            args.directory,
+            p,
+            recursive=args.recursive,
+            room=args.room,
+            chunk_size=args.chunk_size,
+            force=args.force,
+        )
+        print(f"Ingest complete: {summary.indexed} indexed, {summary.skipped} skipped, {summary.errors} errors (of {summary.total_files})")
+    elif args.command == "sources":
+        from mempalace_evolve.ingest import list_sources
+        palace_path = args.palace or "."
+        sources = list_sources(palace_path)
+        if args.action == "list":
+            if not sources:
+                print("No tracked sources.")
+            else:
+                print(f"Tracked sources ({len(sources)}):")
+                for src in sources:
+                    print(f"  {src.path}  [{src.status}]")
+        elif args.action == "stats":
+            indexed = sum(1 for s in sources if s.status == "indexed")
+            stale = sum(1 for s in sources if s.status == "stale")
+            print(f"Indexed: {indexed}, Stale: {stale}, Total: {len(sources)}")
     elif args.command == "export":
         result = palace.export(format=args.format, output=args.output)
         if args.output:
