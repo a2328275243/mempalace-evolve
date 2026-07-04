@@ -10,6 +10,7 @@ Usage:
 
 from __future__ import annotations
 
+import os
 import logging
 import math
 from datetime import datetime, timezone
@@ -47,9 +48,10 @@ class MemPalace:
 
     def __init__(self, palace_path: str | Path = None, wing: str = "global",
                  auto_evolve: bool = False, evolve_interval: int = 3600,
+                 llm_enabled: bool | None = None,
                  scoring_config: dict[str, Any] | None = None):
-        """Initialize a MemPalace instance.
 
+        """Initialize a MemPalace instance.
         Args:
             palace_path: Path to the palace directory. Defaults to ~/.mempalace
             wing: Wing/project name for scoping memories.
@@ -82,10 +84,23 @@ class MemPalace:
         self._evolve_thread = None
         self._evolve_stop = None
         self._scoring_config = scoring_config or {}
+        if llm_enabled is not None:
+            self._llm_enabled = llm_enabled
+        else:
+            # Auto-detect: enable if any common API key is in env
+            self._llm_enabled = bool(
+                os.environ.get("OPENAI_API_KEY")
+                or os.environ.get("ANTHROPIC_API_KEY")
+                or os.environ.get("GEMINI_API_KEY")
+            )
         self._last_evolve_at: str | None = None
         # Working memory: session-level cache to avoid repeated searches
         self._working_memory: list[dict] = []
         self._working_memory_topic: str = ""
+        self._auto_evolve = auto_evolve
+        self._evolve_interval = evolve_interval
+        if auto_evolve:
+            self._start_auto_evolve(evolve_interval)
 
     def __enter__(self):
         """Context manager entry."""
@@ -95,9 +110,6 @@ class MemPalace:
         """Context manager exit: auto-close."""
         self.close()
         return False
-
-        if auto_evolve:
-            self._start_auto_evolve(evolve_interval)
 
     @property
     def path(self) -> Path:
@@ -871,11 +883,35 @@ class MemPalace:
         self._kg = None
         self.stop_auto_evolve()
 
-    def _get_collection(self):
+    @property
+    def _collection(self):
+        """Lazily-loaded ChromaDB collection. Cached after first access."""
         if self._chroma is None:
             from mempalace_evolve.core.chroma_helper import get_collection
             self._chroma = get_collection(str(self._path / "palace"), create=True)
         return self._chroma
+
+    @_collection.setter
+    def _collection(self, value):
+        """Allow resetting the collection cache."""
+        self._chroma = value
+
+    def _get_collection(self):
+        """Backward-compatible alias for @property _collection."""
+        return self._collection
+
+    def _ensure_initialized(self):
+        """Ensure all backend services (ChromaDB, KG) are initialized.
+
+        This unified lifecycle hook replaces scattered ad-hoc initialization
+        checks throughout the codebase. Call once at the start of any
+        public-facing method to guarantee consistent state.
+        """
+        # Lazy-init core services
+        _ = self._collection
+        _ = self._kg_store
+
+
 
     def _extract_triples(self, candidates: list[dict]) -> list[tuple[str, str, str]]:
         """Extract subject-predicate-object triples from candidates using patterns."""
@@ -967,11 +1003,17 @@ class MemPalace:
 
         return extra
 
-    def _get_kg(self):
+    @property
+    def _kg_store(self):
+        """Lazily-loaded knowledge graph. Cached after first access."""
         if self._kg is None:
             from mempalace_evolve.core.knowledge_graph import KnowledgeGraph
             self._kg = KnowledgeGraph(str(self._path / "knowledge_graph.sqlite3"))
         return self._kg
+
+    def _get_kg(self):
+        """Backward-compatible alias for @property _kg_store."""
+        return self._kg_store
 
     def _start_auto_evolve(self, interval: int):
         """Start background thread that runs evolve() periodically."""
@@ -1023,6 +1065,7 @@ class MemPalace:
         for mem in memories:
             content_text = str(mem.get("content", ""))
             if not content_text.strip():
+                ids.append("")  # placeholder for skipped invalid item
                 continue
             room = str(mem.get("room", "general"))
             meta = dict(mem.get("metadata") or {})
@@ -1056,7 +1099,7 @@ class MemPalace:
             ids.append(_make_drawer_id(self._wing, room, source_key, 0))
 
         added, skipped = batch_add_drawers(collection, drawers)
-        return ids
+        return {"added": added, "skipped": skipped, "ids": ids}
 
     def batch_forget(self, drawer_ids):
         """Delete multiple memories in a single batch operation."""

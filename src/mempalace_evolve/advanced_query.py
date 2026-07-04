@@ -1,4 +1,4 @@
-﻿"""Advanced query module for MemPalace: hybrid search, filter enhancement, and result post-processing.
+"""Advanced query module for MemPalace: hybrid search, filter enhancement, and result post-processing.
 
 Provides:
 - Hybrid search (semantic + keyword + metadata filter)

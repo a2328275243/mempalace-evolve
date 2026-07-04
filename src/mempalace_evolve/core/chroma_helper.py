@@ -1,4 +1,4 @@
-﻿"""MemPalace ChromaDB helper module.
+"""MemPalace ChromaDB helper module.
 
 Centralizes ChromaDB connection/CRUD logic shared by all modules.
 Uses a singleton cached embedding function for performance.

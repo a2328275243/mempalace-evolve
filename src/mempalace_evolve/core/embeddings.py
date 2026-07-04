@@ -1,4 +1,4 @@
-﻿"""Singleton embedding function with lazy ONNX loading and caching.
+"""Singleton embedding function with lazy ONNX loading and caching.
 
 Implements the full chromadb.api.types.EmbeddingFunction protocol.
 """
