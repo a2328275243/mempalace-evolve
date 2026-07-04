@@ -1,4 +1,4 @@
-"""High-level SDK for mempalace-evolve.
+﻿"""High-level SDK for mempalace-evolve.
 
 Usage:
     from mempalace_evolve import MemPalace
@@ -1405,6 +1405,87 @@ class MemPalace:
                 })
             output.sort(key=lambda x: x.get("filed_at", ""), reverse=True)
         return output[offset:offset + limit]
+
+    def search(
+        self,
+        query: str | None = None,
+        *,
+        limit: int = 10,
+        mode: str = "hybrid",
+        room: str | None = None,
+        threshold: float = 0.7,
+        memory_types: list[str] | None = None,
+        tags: list[str] | None = None,
+        time_from: float | None = None,
+        time_to: float | None = None,
+        metadata_filter: dict[str, Any] | None = None,
+        expand_kg: bool = False,
+    ) -> list[dict[str, Any]]:
+        """Unified search that automatically routes to the best query strategy.
+
+        Args:
+            query: Natural language query. If None, performs pure metadata filter.
+            mode: ``"hybrid"`` (default, semantic + metadata) or ``"semantic"`` or ``"metadata"``.
+            limit: Max results.
+            room: Filter by room.
+            threshold: Max distance (0-1, lower = more similar).
+            memory_types: Filter by memory type(s): "semantic", "episodic", "procedural".
+            tags: Filter by tags.
+            time_from: Minimum filed_at timestamp (epoch seconds).
+            time_to: Maximum filed_at timestamp (epoch seconds).
+            metadata_filter: Additional metadata key-value filters.
+            expand_kg: If True, expand results via knowledge graph.
+
+        Returns:
+            List of matching memories.
+        """
+        if mode == "hybrid" and query:
+            return self.advanced_query.hybrid_search(
+                query=query,
+                limit=limit,
+                room=room,
+                threshold=threshold,
+                memory_types=memory_types,
+                tags=tags,
+                time_from=time_from,
+                time_to=time_to,
+                metadata_filter=metadata_filter,
+                expand_kg=expand_kg,
+            )
+        if mode == "semantic" and query:
+            # Pure semantic search — no metadata post-filter
+            collection = self._get_collection()
+            if collection is None:
+                return []
+            try:
+                results = collection.query(
+                    query_texts=[query],
+                    n_results=limit,
+                    where={"wing": self._wing},
+                )
+            except Exception as e:
+                logger.warning("semantic search failed: %s", e)
+                return []
+            output = []
+            if results and results.get("documents"):
+                for doc, meta, dist in zip(
+                    results["documents"][0] or [],
+                    results["metadatas"][0] or [],
+                    results["distances"][0] or [],
+                ):
+                    if dist <= threshold:
+                        output.append({"content": doc, "metadata": meta, "distance": dist})
+            return output
+        # Fallback: metadata-only filter
+        return self.advanced_query.filter_by_metadata(
+            limit=limit,
+            room=room,
+            memory_types=memory_types,
+            tags=tags,
+            time_from=time_from,
+            time_to=time_to,
+            metadata_filter=metadata_filter,
+        )
 
     def hybrid_search(
         self,

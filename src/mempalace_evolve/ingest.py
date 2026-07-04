@@ -1,4 +1,4 @@
-"""Document ingestion subsystem for mempalace-evolve.
+﻿"""Document ingestion subsystem for mempalace-evolve.
 
 Handles:
 - Scanning files in a directory
@@ -278,13 +278,31 @@ def ingest_directory(
     chunk_overlap: int = 100,
     force: bool = False,
     extensions: set[str] | None = None,
+    parallel: int = 1,
 ) -> IngestSummary:
     """Ingest all supported files in a directory.
 
     Uses a local manifest (``.mempalace_manifest.json``) to skip
     previously-indexed, unchanged files.
+
+    Args:
+        directory: Directory to scan.
+        palace: MemPalace SDK instance.
+        recursive: If True, scan subdirectories.
+        room: Target room for all chunks.
+        chunk_size: Max characters per chunk.
+        chunk_overlap: Overlap between consecutive chunks.
+        force: If True, re-index all files regardless of cache.
+        extensions: Set of file extensions to include (e.g., ``{".py", ".md"}``).
+        parallel: Number of worker threads for concurrent ingestion (default 1 = serial).
+
+    Returns:
+        IngestSummary with per-file results and aggregate counts.
     """
-    palace_path = getattr(palace, "_palace_path", str(Path.cwd()))
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    import threading
+
+    palace_path = str(getattr(palace, "path", Path.cwd()))
     manifest = _load_manifest(palace_path)
     summary = IngestSummary()
 
@@ -295,7 +313,12 @@ def ingest_directory(
     )
     summary.total_files = len(files)
 
-    for file_path in files:
+    if not files:
+        return summary
+
+    manifest_lock = threading.Lock()
+
+    def _ingest_one(file_path: Path) -> tuple[str, IngestResult]:
         path_str = str(file_path)
         result = ingest_file(
             path_str,
@@ -306,24 +329,47 @@ def ingest_directory(
             force=force,
             manifest=manifest,
         )
-        summary.results.append(result)
+        return path_str, result
 
-        if result.status == "ok":
-            summary.indexed += 1
-            manifest[path_str] = {
-                "hash": _compute_hash(
-                    _read_text_file(file_path) or ""
-                ),
-                "last_indexed": datetime.now(timezone.utc).isoformat(),
-            }
-        elif result.status == "skipped":
-            summary.skipped += 1
-        else:
-            summary.errors += 1
+    workers = max(1, min(parallel, len(files)))
+    if workers > 1:
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = {executor.submit(_ingest_one, fp): fp for fp in files}
+            for future in as_completed(futures):
+                path_str, result = future.result()
+                with manifest_lock:
+                    summary.results.append(result)
+                    if result.status == "ok":
+                        summary.indexed += 1
+                        manifest[path_str] = {
+                            "hash": _compute_hash(
+                                _read_text_file(Path(path_str)) or ""
+                            ),
+                            "last_indexed": datetime.now(timezone.utc).isoformat(),
+                        }
+                    elif result.status == "skipped":
+                        summary.skipped += 1
+                    else:
+                        summary.errors += 1
+    else:
+        for file_path in files:
+            path_str, result = _ingest_one(file_path)
+            summary.results.append(result)
+            if result.status == "ok":
+                summary.indexed += 1
+                manifest[path_str] = {
+                    "hash": _compute_hash(
+                        _read_text_file(file_path) or ""
+                    ),
+                    "last_indexed": datetime.now(timezone.utc).isoformat(),
+                }
+            elif result.status == "skipped":
+                summary.skipped += 1
+            else:
+                summary.errors += 1
 
     _save_manifest(palace_path, manifest)
     return summary
-
 
 def list_sources(palace_path: str) -> list[Source]:
     """List tracked sources from the ingest manifest."""
