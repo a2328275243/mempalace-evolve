@@ -93,6 +93,22 @@ def main():
     p_sim.add_argument("--threshold", type=float, default=0.85, help="Similarity threshold")
     p_sim.add_argument("--palace", default=None, help="Palace path")
 
+    # Lifecycle management commands
+    p_purge = sub.add_parser("purge", help="Purge TTL-expired memories")
+    p_purge.add_argument("--ttl-days", type=int, default=90, help="TTL for low-importance memories")
+    p_purge.add_argument("--ttl-summary", type=int, default=180, help="TTL for summarized memories")
+    p_purge.add_argument("--palace", default=None, help="Palace path")
+
+    p_compress = sub.add_parser("compress", help="Compress old, unused memories")
+    p_compress.add_argument("--after-days", type=int, default=60, help="Age threshold for compression")
+    p_compress.add_argument("--max-chars", type=int, default=800, help="Max summary characters")
+    p_compress.add_argument("--palace", default=None, help="Palace path")
+
+    p_conso = sub.add_parser("consolidate", help="Deduplicate and merge similar memories")
+    p_conso.add_argument("--dry-run", action="store_true", help="Only preview what would be merged")
+    p_conso.add_argument("--palace", default=None, help="Palace path")
+
+
     args = parser.parse_args()
 
     if args.command is None:
@@ -207,6 +223,37 @@ def main():
         for mem in similar:
             print(f"  [{mem['similarity']:.2f}] {mem['content'][:60]}...")
 
+    elif args.command == "purge":
+        palace = get_palace(args.palace)
+        result = palace.purge_expired(ttl_days=args.ttl_days, ttl_summary_days=args.ttl_summary)
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+
+    elif args.command == "compress":
+        palace = get_palace(args.palace)
+        result = palace.compress_old_memories(compress_after_days=args.after_days, max_chars=args.max_chars)
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+
+    elif args.command == "consolidate":
+        palace = get_palace(args.palace)
+        result = palace.consolidate(dry_run=args.dry_run)
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+
+
+
+    elif args.command == "purge":
+        palace = get_palace(args.palace)
+        result = palace.purge_expired(ttl_days=args.ttl_days, ttl_summary_days=args.ttl_summary)
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+
+    elif args.command == "compress":
+        palace = get_palace(args.palace)
+        result = palace.compress_old_memories(compress_after_days=args.after_days, max_chars=args.max_chars)
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+
+    elif args.command == "consolidate":
+        palace = get_palace(args.palace)
+        result = palace.consolidate(dry_run=args.dry_run)
+        print(json.dumps(result, indent=2, ensure_ascii=False))
 
 if __name__ == "__main__":
     main()

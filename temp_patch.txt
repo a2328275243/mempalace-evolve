@@ -1,0 +1,15 @@
+﻿*** Begin Patch
+*** Update File: src/mempalace_evolve/sdk.py
+@@ -15,6 +15,13 @@
+ from mempalace_evolve.advanced_query import AdvancedQuery
++from mempalace_evolve.models import (
++    BatchRememberInput,
++    BatchRememberResult,
++    BatchRecallInput,
++    BatchRecallResult,
++    BatchForgetResult,
++)
+ 
+ logger = logging.getLogger("mempalace_evolve")
+ 
+*** End Patch

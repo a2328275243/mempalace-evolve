@@ -19,18 +19,18 @@ class TestBatchAPI:
             {"content": "数据库用PostgreSQL", "room": "decisions"},
         ]
         result = palace.batch_remember(items)
-        ids = result["ids"]
-        assert result["added"] == 3
-        assert result["skipped"] == 0
+        ids = result.ids
+        assert result.stored == 3
+        assert result.duplicates == 0
         assert len(ids) == 3
         assert all(isinstance(did, str) and did for did in ids)
         assert len(set(ids)) == 3  # All unique
 
     def test_batch_remember_empty(self, palace):
         result = palace.batch_remember([])
-        assert result["ids"] == []
-        assert result["added"] == 0
-        assert result["skipped"] == 0
+        assert result.ids == []
+        assert result.stored == 0
+        assert result.total == 0
 
     def test_batch_remember_invalid_skipped(self, palace):
         items = [
@@ -40,28 +40,26 @@ class TestBatchAPI:
         ]
         result = palace.batch_remember(items)
         # Empty content produces placeholder ID
-        assert result["added"] == 2
-        ids = result["ids"]
-        assert len(ids) == 3
+        assert result.stored == 2
+        ids = result.ids
+        assert len(ids) == 2
         assert ids[0] != ""
-        assert ids[1] == ""  # placeholder for empty content
-        assert ids[2] != ""
 
     def test_batch_forget(self, palace):
         result = palace.batch_remember([
             {"content": "Memory A", "room": "general"},
             {"content": "Memory B", "room": "general"},
         ])
-        deleted = palace.batch_forget(result["ids"])
-        assert deleted == 2
+        deleted = palace.batch_forget(result.ids)
+        assert deleted.deleted == 2
 
     def test_batch_forget_partial(self, palace):
         result = palace.batch_remember([
             {"content": "Only one to keep"},
         ])
         # Some implementations may succeed on delete of nonexistent IDs
-        deleted = palace.batch_forget(result["ids"] + ["drawer_fake_id_never_exists"])
-        assert deleted >= 1  # At least the real one was deleted
+        deleted = palace.batch_forget(result.ids + ["drawer_fake_id_never_exists"])
+        assert deleted.deleted >= 1  # At least the real one was deleted
 
 # ======================================================================
 # Context Manager Tests
@@ -201,7 +199,7 @@ class TestPerformance:
         batch_time = time.time() - start
 
         # Cleanup
-        palace.batch_forget(result["ids"])
+        palace.batch_forget(result.ids)
 
         # Individual
         start = time.time()

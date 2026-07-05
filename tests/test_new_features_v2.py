@@ -13,9 +13,9 @@ class TestBatchRemember:
             {"content": "Memory B", "room": "decisions"},
             {"content": "Memory C", "room": "config"},
         ])
-        assert result["added"] == 3
-        assert result["skipped"] == 0
-        assert len(result["ids"]) == 3
+        assert result.stored == 3
+        assert result.duplicates == 0
+        assert len(result.ids) == 3
 
     def test_batch_remember_empty_content_skipped(self, palace):
         result = palace.batch_remember([
@@ -23,15 +23,15 @@ class TestBatchRemember:
             {"content": "", "room": "general"},
             {"content": "   ", "room": "general"},
         ])
-        assert result["added"] == 1
-        assert result["skipped"] == 0
+        assert result.stored == 1
+        assert result.duplicates == 0
 
     def test_batch_remember_with_ttl_and_tags(self, palace):
         result = palace.batch_remember([
             {"content": "Ephemeral memory", "room": "general", "ttl": 60, "tags": ["temp", "debug"]},
             {"content": "Important memory", "room": "decisions", "tags": ["important", "arch"]},
         ])
-        assert result["added"] == 2
+        assert result.stored == 2
 
     def test_batch_remember_recallable(self, palace):
         palace.batch_remember([

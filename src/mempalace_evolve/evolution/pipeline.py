@@ -112,7 +112,8 @@ class EvolutionPipeline:
                         },
                     })
                 try:
-                    ids = self.palace.batch_remember(items)
+                    result = self.palace.batch_remember(items)
+                    ids = result.ids if hasattr(result, "ids") else result
                     report["promoted"] = len([i for i in ids if i])
                     if len(ids) != len(items):
                         report["errors"].append(

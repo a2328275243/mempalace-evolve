@@ -1,4 +1,4 @@
-﻿"""Document ingestion subsystem for mempalace-evolve.
+"""Document ingestion subsystem for mempalace-evolve.
 
 Handles:
 - Scanning files in a directory
@@ -247,7 +247,7 @@ def ingest_file(
     # Store via SDK batch
     try:
         result = palace.batch_remember(chunks)
-        stored_count = result.get("added", 0) or result.get("stored", len(chunks))
+        stored_count = getattr(result, "stored", 0) or getattr(result, "total", len(chunks))
     except Exception as exc:
         logger.exception("batch_remember failed for %s", path)
         return IngestResult(

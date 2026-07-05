@@ -52,6 +52,29 @@ class BatchRememberResult(BaseModel):
     duplicates: int = Field(default=0)
     ids: list[str] = Field(default_factory=list)
 
+    def __getitem__(self, key):
+        if key in ("added", "stored"):
+            return self.stored
+        if key == "total":
+            return self.total
+        if key == "ids":
+            return self.ids
+        if key == "duplicates":
+            return self.duplicates
+        raise KeyError(key)
+
+    def get(self, key, default=None):
+        try:
+            return self[key]
+        except KeyError:
+            return default
+
+    def __len__(self):
+        return self.stored or self.total
+
+    def __iter__(self):
+        return iter(self.ids)
+
 
 class BatchForgetResult(BaseModel):
     """Result of a batch_forget operation."""
@@ -59,6 +82,21 @@ class BatchForgetResult(BaseModel):
     requested: int = Field(default=0)
     deleted: int = Field(default=0)
     not_found: int = Field(default=0)
+
+    def __getitem__(self, key):
+        if key == "deleted":
+            return self.deleted
+        if key == "requested":
+            return self.requested
+        if key == "not_found":
+            return self.not_found
+        raise KeyError(key)
+
+    def get(self, key, default=None):
+        try:
+            return self[key]
+        except KeyError:
+            return default
 
 
 # ---------------------------------------------------------------------------
@@ -91,7 +129,7 @@ class KGStats(BaseModel):
 
 
 class QueryEntityResult(BaseModel):
-    """Result of query_entity — one side of relations for an entity."""
+    """Result of query_entity 鈥?one side of relations for an entity."""
 
     entity: str
     outgoing: list[Triple] = Field(default_factory=list)
@@ -264,7 +302,7 @@ class BatchRecallInput(BaseModel):
 
 
 class BatchRecallResult(BaseModel):
-    """Result of a batch_recall call — list of (query → memories)."""
+    """Result of a batch_recall call 鈥?list of (query 鈫?memories)."""
 
     results: list[dict[str, Any]] = Field(
         default_factory=list,

@@ -1,4 +1,4 @@
-﻿"""High-level SDK for mempalace-evolve.
+"""High-level SDK for mempalace-evolve.
 
 Usage:
     from mempalace_evolve import MemPalace
@@ -17,6 +17,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Self
 from mempalace_evolve.advanced_query import AdvancedQuery
+from mempalace_evolve.models import (
+    BatchRememberInput,
+    BatchRememberResult,
+    BatchRecallInput,
+    BatchRecallResult,
+    BatchForgetResult,
+)
+
 
 logger = logging.getLogger("mempalace_evolve")
 
@@ -680,6 +688,9 @@ class MemPalace:
                 items = json.load(f)
         else:
             items = source
+        # Handle export wrapper format: {"memories": [...]}
+        if isinstance(items, dict) and "memories" in items:
+            items = items["memories"]
 
         if not isinstance(items, list):
             items = [items]
@@ -701,7 +712,7 @@ class MemPalace:
             except Exception as e:
                 errors.append({"content": content[:50], "error": str(e)})
 
-        return {"imported": imported, "skipped": skipped, "errors": errors}
+        return {"imported": imported, "skipped": skipped, "errors": errors, "added": imported}
 
     def stats(self) -> dict:
         """Get memory palace statistics.
@@ -946,6 +957,90 @@ class MemPalace:
     # ------------------------------------------------------------------
 
 
+    # ------------------------------------------------------------------
+    # Lifecycle management (TTL, compression, consolidation)
+    # ------------------------------------------------------------------
+
+    def purge_expired(self, ttl_days: int = 90, ttl_summary_days: int = 180) -> dict:
+        """Purge expired (TTL) memories from the palace."""
+        from mempalace_evolve.core.lifecycle import find_ttl_expired, purge_expired as _pe
+        collection = self._get_collection()
+        if not collection:
+            return {"purged": 0, "purged_ids": []}
+        expired = find_ttl_expired(collection, ttl_days=ttl_days, ttl_summary_days=ttl_summary_days, wing=self._wing)
+        ids = []
+        for item_list in expired.values():
+            if isinstance(item_list, list):
+                ids.extend(item.get("id", "") for item in item_list if isinstance(item, dict))
+        if not ids:
+            return {"purged": 0, "purged_ids": []}
+        result = _pe(collection, ids)
+        result["purged_ids"] = ids
+        return result
+
+    def compress_old_memories(self, compress_after_days: int = 60, max_chars: int = 800) -> dict:
+        """Compress old, unused memories into shorter summaries."""
+        from mempalace_evolve.core.lifecycle import find_compress_candidates, compress_candidates
+        collection = self._get_collection()
+        if not collection:
+            return {"candidates": 0, "compressed": 0}
+        candidates = find_compress_candidates(collection, compress_after_days=compress_after_days)
+        if not candidates:
+            return {"candidates": 0, "compressed": 0}
+        if self._chroma is None:
+            return {"candidates": sum(len(v) for v in candidates.values()), "compressed": 0}
+        archive_col = self._chroma._client.get_or_create_collection(name="mempalace_archive", metadata={"hnsw:space": "cosine"})
+        result = compress_candidates(collection, candidates, archive_col, max_chars=max_chars)
+        return result
+
+    def consolidate(self, dry_run: bool = False) -> dict:
+        """Run daily consolidation: deduplicate and merge similar memories."""
+        from mempalace_evolve.core.consolidation import consolidate_daily
+        return consolidate_daily(wing=self._wing, dry_run=dry_run)
+
+    
+    # ——— stats / introspection ———————————————————————————————————————
+
+    def count_memories(self) -> int:
+        """Count total memories in this palace wing."""
+        try:
+            from mempalace_evolve.core.chroma_helper import get_all_metadata
+            collection = self._get_collection()
+            if not collection:
+                return 0
+            items = get_all_metadata(collection)
+            return len([i for i in items if i.get("metadata", {}).get("wing") == self._wing])
+        except Exception:
+            return 0
+
+    def list_rooms(self) -> list[str]:
+        """List all distinct rooms used in this palace wing."""
+        try:
+            from mempalace_evolve.core.chroma_helper import get_all_metadata
+            collection = self._get_collection()
+            if not collection:
+                return []
+            items = get_all_metadata(collection)
+            rooms = set()
+            for i in items:
+                meta = i.get("metadata", {})
+                if meta.get("wing") == self._wing:
+                    rooms.add(meta.get("room", "general"))
+            return sorted(rooms)
+        except Exception:
+            return []
+
+    def count_triples(self) -> int:
+        """Count total knowledge graph triples."""
+        try:
+            from mempalace_evolve.core.knowledge_graph import KnowledgeGraph
+            kg = KnowledgeGraph()
+            conn = kg._conn()
+            row = conn.execute("SELECT COUNT(*) FROM triples").fetchone()
+            return row[0] if row else 0
+        except Exception:
+            return 0
+
     def close(self) -> None:
         """Release resources held by this palace instance."""
         self._chroma = None
@@ -1109,7 +1204,7 @@ class MemPalace:
     def batch_remember(
         self,
         memories: list[dict[str, Any]],
-    ) -> dict[str, Any]:
+    ) -> BatchRememberResult:
         """Store multiple memories in a single batch operation.
 
         Args:
@@ -1122,7 +1217,7 @@ class MemPalace:
                 - tags (list[str], optional)
 
         Returns:
-            {"added": int, "skipped": int, "ids": list[str]}
+            BatchRememberResult with total/stored/duplicates/ids.
         """
         from mempalace_evolve.core.chroma_helper import batch_add_drawers, _make_drawer_id
         import hashlib
@@ -1170,21 +1265,21 @@ class MemPalace:
             ids.append(_make_drawer_id(self._wing, room, source_key, 0))
 
         added, skipped = batch_add_drawers(collection, drawers)
-        return {"added": added, "skipped": skipped, "ids": ids}
+        return BatchRememberResult(total=len(memories), stored=added, duplicates=0, ids=[i for i in ids if i])
 
-    def batch_forget(self, drawer_ids):
+    def batch_forget(self, drawer_ids) -> BatchForgetResult:
         """Delete multiple memories in a single batch operation."""
         collection = self._get_collection()
         if collection is None:
-            return 0
+            return BatchForgetResult(requested=0, deleted=0, not_found=0)
         if not drawer_ids:
-            return 0
+            return BatchForgetResult(requested=0, deleted=0, not_found=0)
         try:
             collection.delete(ids=drawer_ids)
-            return len(drawer_ids)
+            return BatchForgetResult(requested=len(drawer_ids), deleted=len(drawer_ids), not_found=0)
         except Exception as _e:
             logger.debug("Count failed: %s", _e)
-            return 0
+            return BatchForgetResult(requested=len(drawer_ids), deleted=0, not_found=0)
 
     
 
@@ -1195,7 +1290,7 @@ class MemPalace:
         limit: int = 3,
         room: str | None = None,
         threshold: float = 0.8,
-    ) -> list[dict[str, Any]]:
+    ) -> BatchRecallResult:
         """Bulk semantic recall: run multiple queries in a single batch.
 
         Args:
@@ -1211,7 +1306,7 @@ class MemPalace:
         for q in queries[:100]:
             memories = self.recall(q, limit=limit, room=room, threshold=threshold)
             results.append({"query": q, "memories": memories})
-        return results
+        return BatchRecallResult(results=results)
 
     def iter_all(
         self,

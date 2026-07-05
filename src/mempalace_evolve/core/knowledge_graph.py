@@ -133,16 +133,16 @@ class KnowledgeGraph:
             pass  # 已记录
 
         conn.commit()
-        conn.close()
+        # Do not close persistent connection for in-memory databases
+        if self.db_path != ":memory:":
+            conn.close()
 
 
     def _new_conn(self):
         """Create a new connection with optimized WAL-mode PRAGMAs."""
         if self.db_path == ":memory:":
-            # Shared cache so multiple connections see the same in-memory database
-            conn = sqlite3.connect("file::memory:?cache=shared", uri=True)
-        else:
-            conn = sqlite3.connect(self.db_path, timeout=10)
+            return self._conn()
+        conn = sqlite3.connect(self.db_path, timeout=10)
         conn.execute("PRAGMA foreign_keys=ON")
         if self.db_path != ":memory:":
             conn.execute("PRAGMA journal_mode=WAL")
@@ -155,6 +155,7 @@ class KnowledgeGraph:
     def _get_conn(self):
         """Context manager yielding an optimized connection."""
         conn = self._new_conn()
+        is_persistent = (self.db_path == ":memory:" and conn is self._persistent_conn)
         try:
             yield conn
             conn.commit()
@@ -162,7 +163,8 @@ class KnowledgeGraph:
             conn.rollback()
             raise
         finally:
-            conn.close()
+            if not is_persistent:
+                conn.close()
     def _conn(self):
         """获取持久数据库连接。首次调用时初始化 PRAGMA，后续复用同一连接。"""
         if self._persistent_conn is not None:
@@ -702,7 +704,7 @@ class KnowledgeGraph:
             ).fetchone()
             entities = row[0]
             row = conn.execute(
-                "SELECT COUNT(*) as total, SUM(CASE WHEN valid_to IS NULL THEN 1 ELSE 0 END) as current FROM triples"
+                "SELECT COUNT(*) as total, COALESCE(SUM(CASE WHEN valid_to IS NULL THEN 1 ELSE 0 END), 0) as current FROM triples"
             ).fetchone()
             triples = row[0]
             current = row[1]
