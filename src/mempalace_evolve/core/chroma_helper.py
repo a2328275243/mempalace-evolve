@@ -122,6 +122,7 @@ def add_drawer(
         pass  # If we can't check, proceed and let add handle it
 
     now_iso = datetime.now(timezone.utc).isoformat()
+    content_hash = hashlib.md5(content.encode()).hexdigest()[:12]
 
     metadata: dict[str, str | int | float] = {
         "wing": wing,
@@ -131,6 +132,7 @@ def add_drawer(
         "added_by": added_by,
         "filed_at": now_iso,
         "last_accessed": now_iso,
+        "content_hash": content_hash,
     }
     if extra_meta:
         for k, v in extra_meta.items():
@@ -178,6 +180,7 @@ def batch_add_drawers(collection, drawers: list[dict]) -> tuple[int, int]:
         ids.append(drawer_id)
 
         now_iso = datetime.now(timezone.utc).isoformat()
+        content_hash = hashlib.md5(content.encode()).hexdigest()[:12]
         meta: dict[str, str | int | float] = {
             "wing": wing,
             "room": room,
@@ -186,6 +189,7 @@ def batch_add_drawers(collection, drawers: list[dict]) -> tuple[int, int]:
             "added_by": str(d.get("added_by", "bulk")),
             "filed_at": now_iso,
             "last_accessed": now_iso,
+            "content_hash": content_hash,
         }
         for k, v in extra_meta.items():
             if isinstance(v, (int, float, bool)):
@@ -197,11 +201,26 @@ def batch_add_drawers(collection, drawers: list[dict]) -> tuple[int, int]:
 
     added = 0
     skipped = 0
-    # Chroma has max batch size ~500
+    # Chroma has max batch size ~500; filter duplicates in bulk first
     for i in range(0, len(ids), 500):
         chunk_ids = ids[i : i + 500]
         chunk_docs = documents[i : i + 500]
         chunk_metas = metadatas[i : i + 500]
+        # Quick bulk duplicate check
+        try:
+            existing = collection.get(ids=chunk_ids)
+            existing_ids = set(existing.get("ids", []) if existing else [])
+        except Exception:
+            existing_ids = set()
+        if existing_ids:
+            filtered = [(cid, cdoc, cmeta) for cid, cdoc, cmeta
+                        in zip(chunk_ids, chunk_docs, chunk_metas)
+                        if cid not in existing_ids]
+            if not filtered:
+                skipped += len(chunk_ids)
+                continue
+            chunk_ids, chunk_docs, chunk_metas = map(list, zip(*filtered))
+            skipped += len(existing_ids)
         try:
             collection.add(
                 ids=chunk_ids,

@@ -106,6 +106,7 @@ class MemPalace:
         # Working memory: session-level cache to avoid repeated searches
         self._working_memory: list[dict] = []
         self._working_memory_topic: str = ""
+        self._working_memory_topic_words: set | None = None
         self._advanced_query: AdvancedQuery | None = None
         self._auto_evolve = auto_evolve
         self._evolve_interval = evolve_interval
@@ -180,18 +181,19 @@ class MemPalace:
         # Auto-classify memory type based on room
         mtype = memory_type or _ROOM_TYPE_MAP.get(room, EPISODIC)
 
-        # Dedup: check if identical content+room already exists
+        # Dedup: O(1) content_hash lookup instead of O(N) get-all
         dedup_col = self._get_collection()
+        content_hash = hashlib.md5(content.encode()).hexdigest()[:12]
         if dedup_col is not None:
             try:
                 existing = dedup_col.get(
-                    where={"$and": [{"wing": self._wing}, {"room": room}]},
-                    include=["documents", "metadatas"],
+                    where={"$and": [{"wing": self._wing}, {"room": room}, {"content_hash": content_hash}]},
+                    include=["documents"],
+                    limit=1,
                 )
-                if existing and existing.get("documents"):
-                    for ex_id, ex_doc in zip(existing.get("ids", []), existing["documents"]):
-                        if ex_doc == content:
-                            return ex_id
+                if existing and existing.get("ids"):
+                    logger.debug("Dedup hit: %s", existing["ids"][0])
+                    return existing["ids"][0]
             except Exception as _e:
                 logger.debug("Dedup check failed: %s", _e)
 
@@ -215,6 +217,35 @@ class MemPalace:
         if tags:
             extra_meta["tags"] = ",".join(tags)
 
+        # --- Similarity dedup: check for similar memories BEFORE storing ---
+        dedup_threshold = self._scoring_config.get("dedup_threshold", 0.85)
+        if dedup_threshold > 0:
+            from mempalace_evolve.core.dedup import check_and_deduplicate
+            dedup_result = check_and_deduplicate(
+                collection=collection,
+                wing=self._wing,
+                content=content,
+                room=room,
+                threshold=dedup_threshold,
+                action=self._scoring_config.get("dedup_action", "skip"),
+            )
+            if dedup_result["action"] == "skip":
+                logger.info("Skipped duplicate memory (similarity: %.2f)", dedup_result["similar"][0]["similarity"])
+                # Return existing ID, no need to store
+                return dedup_result["matched_id"]
+            elif dedup_result["action"] == "merge":
+                # Merge similar content into existing memory
+                from mempalace_evolve.core.dedup import merge_similar_content
+                existing_content = dedup_result["matched_content"]
+                merged_content = merge_similar_content(existing_content, content)
+                collection.update(
+                    ids=[dedup_result["matched_id"]],
+                    documents=[merged_content]
+                )
+                logger.info("Merged duplicate memory into %s", dedup_result["matched_id"])
+                # Update metadata recall_count, etc.
+                return dedup_result["matched_id"]
+
         # --- Contradiction detection: check if new memory conflicts with existing ---
         if mtype == SEMANTIC and room in ("decisions", "config", "architecture"):
             self._handle_contradiction(collection, content, room, extra_meta)
@@ -235,34 +266,6 @@ class MemPalace:
         )
         drawer_id = _make_drawer_id(self._wing, room, source_key, chunk_index)
         logger.debug("Stored memory %s in %s/%s", drawer_id, self._wing, room)
-
-        # --- Similarity dedup: check for similar memories before storing ---
-        dedup_threshold = self._scoring_config.get("dedup_threshold", 0.85)
-        if dedup_threshold > 0:
-            from mempalace_evolve.core.dedup import check_and_deduplicate
-            dedup_result = check_and_deduplicate(
-                collection=collection,
-                wing=self._wing,
-                content=content,
-                room=room,
-                threshold=dedup_threshold,
-                action=self._scoring_config.get("dedup_action", "skip"),
-            )
-            if dedup_result["action"] == "skip":
-                logger.info("Skipped duplicate memory (similarity: %.2f)", dedup_result["similar"][0]["similarity"])
-                return drawer_id  # Return ID but mark as duplicate
-            elif dedup_result["action"] == "merge":
-                # Merge similar content into existing memory
-                from mempalace_evolve.core.dedup import merge_similar_content
-                existing_content = dedup_result["matched_content"]
-                merged_content = merge_similar_content(existing_content, content)
-                # Update the existing memory
-                collection.update(
-                    ids=[dedup_result["matched_id"]],
-                    documents=[merged_content]
-                )
-                logger.info("Merged duplicate memory into %s", dedup_result["matched_id"])
-                return dedup_result["matched_id"]  # Return the merged memory ID
 
         return drawer_id
 
@@ -385,10 +388,20 @@ class MemPalace:
         Returns:
             List of matching memories with content and metadata.
         """
-        # Working memory cache: if same topic, return cached results
-        from difflib import SequenceMatcher
-        topic_sim = SequenceMatcher(None, query, self._working_memory_topic).ratio()
-        if topic_sim > 0.8 and self._working_memory:
+        # Working memory cache: if same topic, return cached results (fast string prefix check)
+        topic_sim = 0.0
+        if self._working_memory_topic and query:
+            # Use simple Jaccard similarity on word-level trigrams for speed
+            query_words = set(query.lower().split())
+            topic_words = self._working_memory_topic_words
+            if not topic_words:
+                topic_words = set(self._working_memory_topic.lower().split())
+                self._working_memory_topic_words = topic_words
+            if query_words and topic_words:
+                intersection = query_words & topic_words
+                union = query_words | topic_words
+                topic_sim = len(intersection) / len(union) if union else 0.0
+        if topic_sim > 0.7 and self._working_memory:
             return self._working_memory[:limit]
 
         collection = self._get_collection()
