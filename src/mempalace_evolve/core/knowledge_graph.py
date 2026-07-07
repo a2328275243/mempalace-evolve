@@ -1,4 +1,4 @@
-"""
+﻿"""
 knowledge_graph.py — Temporal Entity-Relationship Graph for MemPalace
 =====================================================================
 
@@ -45,6 +45,47 @@ from datetime import date, datetime, timezone
 from contextlib import contextmanager
 from pathlib import Path
 
+from collections import OrderedDict
+
+
+class LRUCache:
+    """Simple LRU cache with TTL support."""
+    def __init__(self, maxsize=128, ttl=60):
+        self._maxsize = maxsize
+        self._ttl = ttl
+        self._cache = OrderedDict()
+        self._timestamps = {}
+
+    def get(self, key):
+        if key not in self._cache:
+            return None
+        import time
+        if time.time() - self._timestamps.get(key, 0) > self._ttl:
+            self._cache.pop(key, None)
+            self._timestamps.pop(key, None)
+            return None
+        self._cache.move_to_end(key)
+        return self._cache[key]
+
+    def put(self, key, value):
+        import time
+        self._cache[key] = value
+        self._timestamps[key] = time.time()
+        self._cache.move_to_end(key)
+        if len(self._cache) > self._maxsize:
+            oldest = next(iter(self._cache))
+            self._cache.pop(oldest, None)
+            self._timestamps.pop(oldest, None)
+
+    def invalidate(self, key=None):
+        if key:
+            self._cache.pop(key, None)
+            self._timestamps.pop(key, None)
+        else:
+            self._cache.clear()
+            self._timestamps.clear()
+
+
 logger = logging.getLogger("mempalace.kg")
 
 
@@ -56,6 +97,7 @@ class KnowledgeGraph:
         self.db_path = db_path or DEFAULT_KG_PATH
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
         self._persistent_conn = None
+        self._query_cache = LRUCache(maxsize=256, ttl=30)
         self._init_db()
         atexit.register(self.close)
 
@@ -133,38 +175,19 @@ class KnowledgeGraph:
             pass  # 已记录
 
         conn.commit()
-        # Do not close persistent connection for in-memory databases
-        if self.db_path != ":memory:":
-            conn.close()
 
-
-    def _new_conn(self):
-        """Create a new connection with optimized WAL-mode PRAGMAs."""
-        if self.db_path == ":memory:":
-            return self._conn()
-        conn = sqlite3.connect(self.db_path, timeout=10)
-        conn.execute("PRAGMA foreign_keys=ON")
-        if self.db_path != ":memory:":
-            conn.execute("PRAGMA journal_mode=WAL")
-            conn.execute("PRAGMA synchronous=NORMAL")
-            conn.execute("PRAGMA cache_size=-64000")
-        conn.execute("PRAGMA busy_timeout=5000")
-        return conn
 
     @contextmanager
     def _get_conn(self):
-        """Context manager yielding an optimized connection."""
-        conn = self._new_conn()
-        is_persistent = (self.db_path == ":memory:" and conn is self._persistent_conn)
+        """Context manager yielding the persistent connection for reuse."""
+        conn = self._conn()
         try:
             yield conn
-            conn.commit()
         except Exception:
             conn.rollback()
             raise
-        finally:
-            if not is_persistent:
-                conn.close()
+        else:
+            conn.commit()
     def _conn(self):
         """获取持久数据库连接。首次调用时初始化 PRAGMA，后续复用同一连接。"""
         if self._persistent_conn is not None:
@@ -179,6 +202,7 @@ class KnowledgeGraph:
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA synchronous=NORMAL")
         conn.execute("PRAGMA cache_size=-64000")  # 64MB cache
+        conn.execute("PRAGMA busy_timeout=5000")
         self._persistent_conn = conn
         return conn
 
@@ -210,6 +234,7 @@ class KnowledgeGraph:
                 )
             conn.commit()
 
+            self._query_cache.invalidate()
             return eid
 
     def remove_entity(self, name: str) -> bool:
@@ -233,6 +258,7 @@ class KnowledgeGraph:
             conn.execute("PRAGMA foreign_keys = ON")
             conn.commit()
 
+            self._query_cache.invalidate()
             return cursor.rowcount > 0
 
     def add_triple(
@@ -292,6 +318,7 @@ class KnowledgeGraph:
             )
             conn.commit()
 
+            self._query_cache.invalidate()
             return triple_id
 
     def invalidate(self, subject: str, predicate: str, obj: str, ended: str = None):
@@ -309,6 +336,7 @@ class KnowledgeGraph:
             conn.commit()
 
 
+            self._query_cache.invalidate()
             # ── Canonical name operations ──────────────────────────────────────────
 
     def set_canonical_name(self, name: str, canonical: str):
@@ -324,14 +352,23 @@ class KnowledgeGraph:
 
     def query_entity_by_canonical(self, canonical: str, direction: str = "both",
                                    as_of: str = None) -> list:
-        """通过规范名查询实体关系（查询所有 canonical_name 匹配的实体）"""
+        """通过规范名查询实体关系（查询所有 canonical_name 匹配的实体，一次SQL批量化）"""
+        cache_key = f"query_entity_canonical:{canonical}:{as_of}:{direction}"
+        cached = self._query_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
         with self._get_conn() as conn:
-            matching_ids = conn.execute(
-                "SELECT id FROM entities WHERE canonical_name=? OR name=?",
-                (canonical, canonical),
-            ).fetchall()
+            matching_ids = [
+                r[0] for r in conn.execute(
+                    "SELECT id FROM entities WHERE canonical_name=? OR name=?",
+                    (canonical, canonical),
+                ).fetchall()
+            ]
+            if not matching_ids:
+                return []
 
-
+            placeholders = ",".join("?" for _ in matching_ids)
             time_filter = ""
             time_params = []
             if as_of:
@@ -339,74 +376,41 @@ class KnowledgeGraph:
                 time_params = [as_of, as_of]
 
             results = []
-            for (eid,) in matching_ids:
-                if direction == "both":
-                    query = (
-                        "SELECT 'outgoing' as dir, t.*, e.name as other_name FROM triples t"
-                        " JOIN entities e ON t.object = e.id WHERE t.subject = ?"
-                        + time_filter
-                        + " UNION ALL "
-                        "SELECT 'incoming' as dir, t.*, e.name as other_name FROM triples t"
-                        " JOIN entities e ON t.subject = e.id WHERE t.object = ?"
-                        + time_filter
-                    )
-                    params = [eid] + time_params + [eid] + time_params
-                    for row in conn.execute(query, params).fetchall():
-                        dir_flag = row[0]
-                        if dir_flag == "outgoing":
-                            results.append({
-                                "direction": "outgoing",
-                                "subject": canonical,
-                                "predicate": row[3],
-                                "object": row[11],
-                                "valid_from": row[5],
-                                "valid_to": row[6],
-                                "current": row[6] is None,
-                            })
-                        else:
-                            results.append({
-                                "direction": "incoming",
-                                "subject": row[11],
-                                "predicate": row[3],
-                                "object": canonical,
-                                "valid_from": row[5],
-                                "valid_to": row[6],
-                                "current": row[6] is None,
-                            })
-                elif direction == "outgoing":
-                    query = "SELECT t.*, e.name as obj_name FROM triples t JOIN entities e ON t.object = e.id WHERE t.subject = ?"
-                    params = [eid]
-                    if as_of:
-                        query += time_filter
-                        params.extend(time_params)
-                    for row in conn.execute(query, params).fetchall():
-                        results.append({
-                            "direction": "outgoing",
-                            "subject": canonical,
-                            "predicate": row[2],
-                            "object": row[10],
-                            "valid_from": row[4],
-                            "valid_to": row[5],
-                            "current": row[5] is None,
-                        })
-                elif direction == "incoming":
-                    query = "SELECT t.*, e.name as sub_name FROM triples t JOIN entities e ON t.subject = e.id WHERE t.object = ?"
-                    params = [eid]
-                    if as_of:
-                        query += time_filter
-                        params.extend(time_params)
-                    for row in conn.execute(query, params).fetchall():
-                        results.append({
-                            "direction": "incoming",
-                            "subject": row[10],
-                            "predicate": row[2],
-                            "object": canonical,
-                            "valid_from": row[4],
-                            "valid_to": row[5],
-                            "current": row[5] is None,
-                        })
+            if direction in ("both", "outgoing"):
+                q = (
+                    f"SELECT t.predicate, e.name, t.valid_from, t.valid_to "
+                    f"FROM triples t JOIN entities e ON t.object = e.id "
+                    f"WHERE t.subject IN ({placeholders}){time_filter}"
+                )
+                for row in conn.execute(q, matching_ids + time_params).fetchall():
+                    results.append({
+                        "direction": "outgoing",
+                        "subject": canonical,
+                        "predicate": row[0],
+                        "object": row[1],
+                        "valid_from": row[2],
+                        "valid_to": row[3],
+                        "current": row[3] is None,
+                    })
+            if direction in ("both", "incoming"):
+                q = (
+                    f"SELECT e.name, t.predicate, t.valid_from, t.valid_to "
+                    f"FROM triples t JOIN entities e ON t.subject = e.id "
+                    f"WHERE t.object IN ({placeholders}){time_filter}"
+                )
+                for row in conn.execute(q, matching_ids + time_params).fetchall():
+                    results.append({
+                        "direction": "incoming",
+                        "subject": row[0],
+                        "predicate": row[1],
+                        "object": canonical,
+                        "valid_from": row[2],
+                        "valid_to": row[3],
+                        "current": row[3] is None,
+                    })
 
-            return results
+        self._query_cache.put(cache_key, results)
+        return results
 
     def get_all_entity_names(self) -> list:
         """获取所有实体名（含 canonical_name）"""
@@ -426,6 +430,11 @@ class KnowledgeGraph:
         direction: "outgoing" (entity → ?), "incoming" (? → entity), "both"
         as_of: date string — only return facts valid at that time
         """
+        cache_key = f"query_entity:{name}:{as_of}:{direction}"
+        cached = self._query_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
         eid = self._entity_id(name)
         with self._get_conn() as conn:
 
@@ -512,7 +521,125 @@ class KnowledgeGraph:
                     })
 
 
-            return results
+        self._query_cache.put(cache_key, results)
+        return results
+
+    def batch_query_entity(self, names: list[str], as_of: str = None,
+                            direction: str = "both") -> dict[str, list]:
+        """Batch query multiple entities in a single SQL pass.
+
+        Args:
+            names: Entity names to query.
+            as_of: Optional temporal filter.
+            direction: "outgoing", "incoming", or "both".
+
+        Returns:
+            Dict mapping entity name to list of relationship dicts.
+        """
+        result: dict[str, list] = {}
+        missed: list[str] = []
+
+        for name in names:
+            cache_key = f"query_entity:{name}:{as_of}:{direction}"
+            cached = self._query_cache.get(cache_key)
+            if cached is not None:
+                result[name] = cached
+            else:
+                missed.append(name)
+
+        if not missed:
+            return result
+
+        eid_map = {n: self._entity_id(n) for n in missed}
+        # Remove any entities not found (None eid)
+        eid_map = {n: e for n, e in eid_map.items() if e is not None}
+
+        if not eid_map:
+            for name in missed:
+                result[name] = []
+            return result
+
+        with self._get_conn() as conn:
+            time_filter = ""
+            time_params: list[str] = []
+            if as_of:
+                time_filter = " AND (t.valid_from IS NULL OR t.valid_from <= ?) AND (t.valid_to IS NULL OR t.valid_to >= ?)"
+                time_params = [as_of, as_of]
+
+            eid_values = list(eid_map.values())
+
+            if direction in ("both", "outgoing"):
+                placeholders = ",".join("?" for _ in eid_values)
+                query = (
+                    "SELECT t.subject as eid, t.predicate, e.name as other_name, "
+                    "t.valid_from, t.valid_to, t.confidence, t.source_closet "
+                    "FROM triples t JOIN entities e ON t.object = e.id "
+                    f"WHERE t.subject IN ({placeholders})" + time_filter
+                )
+                rows = conn.execute(query, eid_values + time_params).fetchall()
+                for row in rows:
+                    subject_eid = row[0]
+                    # Find name for this eid
+                    found_name = None
+                    for nv, ev in eid_map.items():
+                        if ev == subject_eid:
+                            found_name = nv
+                            break
+                    if found_name is None:
+                        continue
+                    if found_name not in result:
+                        result[found_name] = []
+                    result[found_name].append({
+                        "direction": "outgoing",
+                        "subject": found_name,
+                        "predicate": row[1],
+                        "object": row[2],
+                        "valid_from": row[3],
+                        "valid_to": row[4],
+                        "confidence": row[5],
+                        "source_closet": row[6],
+                        "current": row[4] is None,
+                    })
+
+            if direction in ("both", "incoming"):
+                placeholders = ",".join("?" for _ in eid_values)
+                query = (
+                    "SELECT t.object as eid, e.name as other_name, t.predicate, "
+                    "t.valid_from, t.valid_to, t.confidence, t.source_closet "
+                    "FROM triples t JOIN entities e ON t.subject = e.id "
+                    f"WHERE t.object IN ({placeholders})" + time_filter
+                )
+                rows = conn.execute(query, eid_values + time_params).fetchall()
+                for row in rows:
+                    object_eid = row[0]
+                    found_name = None
+                    for nv, ev in eid_map.items():
+                        if ev == object_eid:
+                            found_name = nv
+                            break
+                    if found_name is None:
+                        continue
+                    if found_name not in result:
+                        result[found_name] = []
+                    result[found_name].append({
+                        "direction": "incoming",
+                        "subject": row[1],
+                        "predicate": row[2],
+                        "object": found_name,
+                        "valid_from": row[3],
+                        "valid_to": row[4],
+                        "confidence": row[5],
+                        "source_closet": row[6],
+                        "current": row[4] is None,
+                    })
+
+        for name in missed:
+            if name not in result:
+                result[name] = []
+            cache_key = f"query_entity:{name}:{as_of}:{direction}"
+            self._query_cache.put(cache_key, result[name])
+
+        return result
 
     def query_relationship(self, predicate: str, as_of: str = None):
         """Get all triples with a given relationship type."""
@@ -696,6 +823,115 @@ class KnowledgeGraph:
             current_level = next_level - visited_entities
         return edges
 
+
+    def batch_query_entities(self, names, as_of=None, direction="outgoing"):
+        """Query multiple entities in a single SQL pass.
+
+        Args:
+            names: List of entity names to query.
+            as_of: Optional date string for temporal filtering.
+            direction: "outgoing", "incoming", "both"
+
+        Returns:
+            Dict mapping entity name -> list of relationship dicts.
+        """
+        if not names:
+            return {}
+
+        result = {}
+        missed = []
+        for name in names:
+            cache_key = f"query_entity:{name}:{as_of}:{direction}"
+            cached = self._query_cache.get(cache_key)
+            if cached is not None:
+                result[name] = cached
+            else:
+                missed.append(name)
+
+        if not missed:
+            return result
+
+        eid_map = {n: self._entity_id(n) for n in missed}
+
+        with self._get_conn() as conn:
+            time_filter = ""
+            time_params = []
+            if as_of:
+                time_filter = " AND (t.valid_from IS NULL OR t.valid_from <= ?) AND (t.valid_to IS NULL OR t.valid_to >= ?)"
+                time_params = [as_of, as_of]
+
+            if direction in ("both", "outgoing"):
+                placeholders = ",".join("?" for _ in eid_map.values())
+                query = (
+                    "SELECT t.subject as eid, t.*, '' as extra_dir, e.name as other_name "
+                    "FROM triples t JOIN entities e ON t.object = e.id "
+                    f"WHERE t.subject IN ({placeholders})" + time_filter
+                )
+                rows = conn.execute(query, list(eid_map.values()) + time_params).fetchall()
+                for row in rows:
+                    subject_eid = row[0]
+                    name_val_found = None
+                    for nv, ev in eid_map.items():
+                        if ev == subject_eid:
+                            name_val_found = nv
+                            break
+                    if name_val_found is None:
+                        continue
+                    if name_val_found not in result:
+                        result[name_val_found] = []
+                    result[name_val_found].append({
+                        "direction": "outgoing",
+                        "subject": name_val_found,
+                        "predicate": row[3],
+                        "object": row[12],
+                        "valid_from": row[5],
+                        "valid_to": row[6],
+                        "confidence": row[7],
+                        "source_closet": row[8],
+                        "current": row[6] is None,
+                    })
+
+            if direction in ("both", "incoming"):
+                placeholders = ",".join("?" for _ in eid_map.values())
+                query = (
+                    "SELECT t.object as eid, t.*, '' as extra_dir, e.name as other_name "
+                    "FROM triples t JOIN entities e ON t.subject = e.id "
+                    f"WHERE t.object IN ({placeholders})" + time_filter
+                )
+                rows = conn.execute(query, list(eid_map.values()) + time_params).fetchall()
+                for row in rows:
+                    object_eid = row[0]
+                    name_val_found = None
+                    for nv, ev in eid_map.items():
+                        if ev == object_eid:
+                            name_val_found = nv
+                            break
+                    if name_val_found is None:
+                        continue
+                    if name_val_found not in result:
+                        result[name_val_found] = []
+                    result[name_val_found].append({
+                        "direction": "incoming",
+                        "subject": row[12],
+                        "predicate": row[3],
+                        "object": name_val_found,
+                        "valid_from": row[5],
+                        "valid_to": row[6],
+                        "confidence": row[7],
+                        "source_closet": row[8],
+                        "current": row[6] is None,
+                    })
+
+        for name in missed:
+            if name not in result:
+                result[name] = []
+
+        for name in missed:
+            cache_key = f"query_entity:{name}:{as_of}:{direction}"
+            self._query_cache.put(cache_key, result[name])
+
+        return result
+
     def stats(self):
         with self._get_conn() as conn:
             # 合并 3 次 COUNT 为单次查询
@@ -767,6 +1003,11 @@ class KnowledgeGraph:
 
     def query_entity_v2(self, name: str, as_of: str = None) -> dict:
         """Query entity returning structured result with separate incoming/outgoing lists."""
+        cache_key = f"query_entity_v2:{name}:{as_of}"
+        cached = self._query_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
         result = {"entity": name, "outgoing": [], "incoming": []}
         eid = self._entity_id(name)
         with self._get_conn() as conn:
@@ -795,5 +1036,7 @@ class KnowledgeGraph:
                     "valid_from": row[2], "valid_to": row[3], "confidence": row[4],
                     "source_closet": row[5], "current": row[3] is None,
                 })
+        self._query_cache.put(cache_key, result)
         return result
+
 

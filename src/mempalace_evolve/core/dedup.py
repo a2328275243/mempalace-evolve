@@ -19,6 +19,46 @@ DEFAULT_SIMILARITY_THRESHOLD = 0.85
 MIN_CONTENT_LENGTH = 20
 
 
+def text_overlap_similarity(text_a: str, text_b: str, min_overlap_ratio: float = 0.3) -> float:
+    """Stage-2 semantic text overlap check using word overlap + Jaccard.
+
+    This is a fast, deterministic fallback that confirms/disconfirms
+    vector distance matches by measuring word-level overlap.
+
+    Args:
+        text_a: First text.
+        text_b: Second text.
+        min_overlap_ratio: Minimum ratio of shared words needed.
+
+    Returns:
+        Overlap score 0.0-1.0 (Jaccard * word presence bonus).
+    """
+    if not text_a or not text_b:
+        return 0.0
+
+    def tokenize(s):
+        return set(s.lower().split())
+
+    tokens_a = tokenize(text_a)
+    tokens_b = tokenize(text_b)
+
+    if not tokens_a or not tokens_b:
+        return 0.0
+
+    intersection = tokens_a & tokens_b
+    union = tokens_a | tokens_b
+    jaccard = len(intersection) / len(union) if union else 0.0
+
+    # Boost if one is mostly contained in the other
+    containment = len(intersection) / min(len(tokens_a), len(tokens_b))
+
+    # Weighted combination: 40% Jaccard + 60% containment
+    score = 0.4 * jaccard + 0.6 * containment
+    return min(1.0, score)
+
+MIN_CONTENT_LENGTH = 20
+
+
 def find_similar_memories(
     collection,
     wing: str,
@@ -70,12 +110,23 @@ def find_similar_memories(
         similarity = max(0.0, min(1.0, 1.0 - distance))
 
         if similarity >= threshold:
+            # Stage 2: text overlap verification (reduce false positives)
+            existing_content = results["documents"][0][i]
+            overlap_score = text_overlap_similarity(content, existing_content)
+            if overlap_score < 0.15:
+                # Low text overlap despite high vector distance ? likely false positive
+                continue
+            # Combined score: weighted average of vector similarity and text overlap
+            combined_similarity = round(0.6 * similarity + 0.4 * overlap_score, 3)
+            if combined_similarity < threshold:
+                continue
             similar.append({
                 "id": doc_id,
-                "content": results["documents"][0][i],
+                "content": existing_content,
                 "room": results["metadatas"][0][i].get("room", "general"),
-                "similarity": round(similarity, 3),
+                "similarity": combined_similarity,
                 "distance": distance,
+                "text_overlap": round(overlap_score, 3),
             })
 
     return similar

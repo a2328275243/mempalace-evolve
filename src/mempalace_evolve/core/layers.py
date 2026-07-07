@@ -57,6 +57,7 @@ class Layer1:
         self._cache = None
         self._cache_time = 0
         self._cache_ttl = 300  # 5 分钟缓存
+        self._data_hash = None
         # 预编译正则（避免每次 generate 时重新编译）
         self._re_shorten = None
 
@@ -64,12 +65,19 @@ class Layer1:
         import time
         now = time.time()
         if not force_refresh and self._cache and (now - self._cache_time) < self._cache_ttl:
-            return self._cache
+            if self._data_hash is not None:
+                col_check = get_collection(self.palace_path, create=False)
+                if col_check:
+                    current_hash = self._quick_data_hash(col_check)
+                    if current_hash == self._data_hash:
+                        return self._cache
+            # Data changed or no hash -> fall through
 
         col = get_collection(self.palace_path, create=False)
         if not col or col.count() == 0:
             self._cache = "## L1 -- 关键事实\n（Palace 为空）"
             self._cache_time = time.time()
+            self._data_hash = "empty"
             return self._cache
 
         # 优化：如果无 wing 过滤，用向量搜索快速获取 top drawers
@@ -109,6 +117,7 @@ class Layer1:
         if not all_drawers:
             self._cache = "## L1 -- 关键事实\n（无可用记忆）"
             self._cache_time = time.time()
+            self._data_hash = "empty"
             return self._cache
 
         # 按重要性排序，取 top 15
@@ -152,9 +161,34 @@ class Layer1:
         result = "".join(lines)
         self._cache = result
         self._cache_time = now
+        self._data_hash = self._quick_data_hash(col)
         return result
 
     # ------------------------------------------------------------------
+
+    def _quick_data_hash(self, col):
+        """Compute a lightweight hash of the collection state.
+        Uses count + first 20 IDs/metadata for fast staleness detection.
+        """
+        try:
+            count = col.count()
+            if count == 0:
+                return "empty"
+            sample = col.get(limit=20, include=["metadatas"])
+            if not sample["ids"]:
+                return "empty"
+            parts = [str(count)]
+            for j, doc_id in enumerate(sample["ids"]):
+                meta = sample["metadatas"][j] if sample["metadatas"] else {}
+                w = meta.get("wing", "")
+                r = meta.get("room", "")
+                imp = meta.get("importance", "0.5")
+                parts.append(f"{doc_id}|{w}|{r}|{imp}")
+            import hashlib
+            return hashlib.md5("|".join(parts).encode()).hexdigest()[:16]
+        except Exception:
+            return None
+
     # Layer1 内部辅助方法
     # ------------------------------------------------------------------
 

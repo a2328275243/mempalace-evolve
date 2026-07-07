@@ -137,22 +137,25 @@ class AsyncMemPalace:
         return self._sync_palace
 
     def __getattr__(self, name: str) -> Any:
-        """Fallback: try to expose any missing attribute from sync palace."""
+        """Transparently proxy sync methods to async via thread pool.
+
+        When an async-level method is not found, look up the corresponding
+        sync method and wrap it so it runs in a worker thread. This keeps the
+        async SDK complete without duplicating every method signature.
+        """
         if name.startswith("_"):
             raise AttributeError(name)
         sync = self._get_sync()
         if hasattr(sync, name):
             attr = getattr(sync, name)
             if callable(attr):
-                logger.warning(
-                    "Calling sync method %r directly. Use async wrapper instead.", name
-                )
-                return attr
+                async def _proxy(*args, **kwargs):
+                    return await self._run(name, *args, **kwargs)
+                return _proxy
             return attr
         raise AttributeError(
             f"{type(self).__name__!r} has no attribute {name!r}"
         )
-
     async def _run(self, name: str, *args, **kwargs):
         """Execute a sync method in the thread pool."""
         if self._closed:
@@ -516,6 +519,18 @@ class AsyncMemPalace:
         """Run daily consolidation: deduplicate and merge similar memories."""
         from mempalace_evolve.core.consolidation import consolidate_daily
         return consolidate_daily(wing=self._wing, dry_run=dry_run)
+
+    async def count_memories(self) -> int:
+        """Return the total number of memories stored in this palace."""
+        return await self._run("count_memories")
+
+    async def count_triples(self) -> int:
+        """Return the total number of triples in the knowledge graph."""
+        return await self._run("count_triples")
+
+    async def list_rooms(self) -> list[str]:
+        """Return all room names in the palace."""
+        return await self._run("list_rooms")
 
     async def close(self) -> None:
         """Release resources. Safe to call multiple times."""

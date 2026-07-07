@@ -1,4 +1,4 @@
-"""MemPalace ChromaDB helper module.
+﻿"""MemPalace ChromaDB helper module.
 
 Centralizes ChromaDB connection/CRUD logic shared by all modules.
 Uses a singleton cached embedding function for performance.
@@ -30,7 +30,6 @@ _client_cache: dict[str, chromadb.PersistentClient] = {}
 _collection_cache: dict[str, chromadb.Collection] = {}
 _last_health_check: dict[str, float] = {}
 _HEALTH_CHECK_INTERVAL = 60  # seconds
-
 
 def get_collection(palace_path: str = None, create: bool = True) -> chromadb.Collection | None:
     """Get or create a ChromaDB collection (cached, thread-safe).
@@ -73,7 +72,7 @@ def get_collection(palace_path: str = None, create: bool = True) -> chromadb.Col
         if create:
             col = client.get_or_create_collection(
                 name=COLLECTION_NAME,
-                metadata={"hnsw:space": "cosine"},
+                metadata={"hnsw:space": "cosine", "hnsw:construction_ef": 200, "hnsw:M": 32, "hnsw:search_ef": 200},
                 embedding_function=ef,
             )
         else:
@@ -88,7 +87,6 @@ def get_collection(palace_path: str = None, create: bool = True) -> chromadb.Col
     except Exception as e:
         logger.warning("Failed to get chroma collection: %s", e)
         return None
-
 
 def add_drawer(
     collection,
@@ -153,7 +151,6 @@ def add_drawer(
             return False
         logger.warning("add_drawer failed: %s", e)
         return False
-
 
 def batch_add_drawers(collection, drawers: list[dict]) -> tuple[int, int]:
     """Bulk-add drawers with a single ChromaDB call per chunk.
@@ -237,7 +234,6 @@ def batch_add_drawers(collection, drawers: list[dict]) -> tuple[int, int]:
                 skipped += len(chunk_ids)
     return (added, skipped)
 
-
 def delete_file_drawers(collection, source_file: str) -> int:
     """Delete all drawers from a specific source file.
 
@@ -252,7 +248,6 @@ def delete_file_drawers(collection, source_file: str) -> int:
         return len(ids)
     except Exception:
         return 0
-
 
 def delete_by_wing(collection, wing: str) -> int:
     """Delete all drawers for a given wing.
@@ -269,7 +264,6 @@ def delete_by_wing(collection, wing: str) -> int:
     except Exception:
         return 0
 
-
 def delete_by_room(collection, wing: str, room: str) -> int:
     """Delete all drawers matching a specific wing + room.
 
@@ -284,7 +278,6 @@ def delete_by_room(collection, wing: str, room: str) -> int:
         return len(ids)
     except Exception:
         return 0
-
 
 def get_all_metadata(collection, batch_size: int = 1000) -> list[dict]:
     """Fetch all document metadata from the collection (batched).
@@ -315,7 +308,6 @@ def get_all_metadata(collection, batch_size: int = 1000) -> list[dict]:
         logger.warning("get_all_metadata failed: %s", e)
     return all_items
 
-
 def get_pool_stats() -> dict:
     """Return connection pool statistics for monitoring."""
     with _cache_lock:
@@ -325,33 +317,19 @@ def get_pool_stats() -> dict:
             "health_checks": len(_last_health_check),
         }
 
-
 def _make_drawer_id(wing: str, room: str, source_file: str, chunk_index: int) -> str:
     """Generate a deterministic drawer ID."""
     raw = f"{source_file}:{chunk_index}"
     hash_part = hashlib.md5(raw.encode()).hexdigest()[:16]
     return f"drawer_{wing}_{room}_{hash_part}"
 
-
-
-
 def file_already_mined(collection: Any, source_file: str) -> bool:
+    """Check if a file has already been mined (any drawers exist)."""
     try:
         result = collection.get(where={"source_file": source_file})
         return bool(result and result.get("ids"))
     except Exception:
         return False
-
-
-def delete_file_drawers(collection: Any, source_file: str) -> int:
-    try:
-        result = collection.get(where={"source_file": source_file})
-        ids = result.get("ids", []) if result else []
-        if ids:
-            collection.delete(ids=ids)
-        return len(ids)
-    except Exception:
-        return 0
 
 
 def _repair_collection(palace_path: str) -> chromadb.Collection | None:
@@ -374,7 +352,7 @@ def _repair_collection(palace_path: str) -> chromadb.Collection | None:
         ef = get_cached_ef()
         return client.get_or_create_collection(
             name=COLLECTION_NAME,
-            metadata={"hnsw:space": "cosine"},
+            metadata={"hnsw:space": "cosine", "hnsw:construction_ef": 200, "hnsw:M": 32, "hnsw:search_ef": 200},
             embedding_function=ef,
         )
     except Exception as e:
