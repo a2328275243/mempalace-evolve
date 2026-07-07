@@ -1,4 +1,4 @@
-﻿"""
+"""
 knowledge_graph.py — Temporal Entity-Relationship Graph for MemPalace
 =====================================================================
 
@@ -35,7 +35,6 @@ Usage:
     kg.invalidate("Max", "has_issue", "sports_injury", ended="2026-02-15")
 """
 
-import atexit
 import hashlib
 import json
 import logging
@@ -99,16 +98,18 @@ class KnowledgeGraph:
         self._persistent_conn = None
         self._query_cache = LRUCache(maxsize=256, ttl=30)
         self._init_db()
-        atexit.register(self.close)
+        import weakref
+        weakref.finalize(self, self.close)
 
     def close(self):
-        """Close the persistent SQLite connection safely."""
-        if self._persistent_conn is not None:
+        """Close the persistent SQLite connection safely (thread-safe)."""
+        conn = self._persistent_conn
+        if conn is not None:
+            self._persistent_conn = None
             try:
-                self._persistent_conn.close()
+                conn.close()
             except Exception:
                 pass
-            self._persistent_conn = None
 
     def _init_db(self):
         conn = self._conn()

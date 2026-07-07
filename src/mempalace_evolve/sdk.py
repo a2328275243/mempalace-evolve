@@ -1214,6 +1214,14 @@ class MemPalace:
         self._evolve_thread.start()
         logger.info("Auto-evolve started (interval=%ds)", interval)
 
+
+    def store(self, content, room="general", source=None,
+              memory_type=None, metadata=None, tags=None,
+              ttl=None):
+        """Alias for remember() ? store a single memory."""
+        return self.remember(content, room=room, memory_type=memory_type,
+                             metadata=metadata, source=source or "",
+                             tags=tags, ttl=ttl)
     def batch_remember(
         self,
         memories: list[dict[str, Any]],

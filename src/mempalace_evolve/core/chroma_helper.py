@@ -1,4 +1,4 @@
-﻿"""MemPalace ChromaDB helper module.
+"""MemPalace ChromaDB helper module.
 
 Centralizes ChromaDB connection/CRUD logic shared by all modules.
 Uses a singleton cached embedding function for performance.
@@ -45,14 +45,14 @@ def get_collection(palace_path: str = None, create: bool = True) -> chromadb.Col
         palace_path = str(GLOBAL_CHROMA)
 
     cache_key = f"{palace_path}:{COLLECTION_NAME}:{create}"
+    now = _time.time()
     with _cache_lock:
-        if cache_key in _collection_cache:
-            col = _collection_cache[cache_key]
-            # Health check every 60s instead of every call
-            now = _time.time()
-            if now - _last_health_check.get(cache_key, 0) < _HEALTH_CHECK_INTERVAL:
+        # Fast-path: cache hit + recent health check
+        col = _collection_cache.get(cache_key)
+        if col is not None:
+            last_check = _last_health_check.get(cache_key, 0)
+            if now - last_check < _HEALTH_CHECK_INTERVAL:
                 return col
-            # Health check
             try:
                 col.count()
                 _last_health_check[cache_key] = now
@@ -60,33 +60,31 @@ def get_collection(palace_path: str = None, create: bool = True) -> chromadb.Col
             except Exception:
                 _collection_cache.pop(cache_key, None)
                 _client_cache.pop(palace_path, None)
+                col = None
 
-    try:
-        with _cache_lock:
-            if palace_path not in _client_cache:
-                _client_cache[palace_path] = chromadb.PersistentClient(path=palace_path)
-            client = _client_cache[palace_path]
+        # Create/recover client inside the same lock scope (no double acquire)
+        if palace_path not in _client_cache:
+            _client_cache[palace_path] = chromadb.PersistentClient(path=palace_path)
+        client = _client_cache[palace_path]
 
-        ef = get_cached_ef()
+    ef = get_cached_ef()
 
-        if create:
-            col = client.get_or_create_collection(
-                name=COLLECTION_NAME,
-                metadata={"hnsw:space": "cosine", "hnsw:construction_ef": 200, "hnsw:M": 32, "hnsw:search_ef": 200},
-                embedding_function=ef,
-            )
-        else:
-            try:
-                col = client.get_collection(name=COLLECTION_NAME, embedding_function=ef)
-            except Exception:
-                return None
+    if create:
+        col = client.get_or_create_collection(
+            name=COLLECTION_NAME,
+            metadata={"hnsw:space": "cosine", "hnsw:construction_ef": 200, "hnsw:M": 32, "hnsw:search_ef": 200},
+            embedding_function=ef,
+        )
+    else:
+        try:
+            col = client.get_collection(name=COLLECTION_NAME, embedding_function=ef)
+        except Exception:
+            return None
 
-        with _cache_lock:
-            _collection_cache[cache_key] = col
-        return col
-    except Exception as e:
-        logger.warning("Failed to get chroma collection: %s", e)
-        return None
+    with _cache_lock:
+        _collection_cache[cache_key] = col
+        _last_health_check[cache_key] = now
+    return col
 
 def add_drawer(
     collection,
@@ -250,34 +248,42 @@ def delete_file_drawers(collection, source_file: str) -> int:
         return 0
 
 def delete_by_wing(collection, wing: str) -> int:
-    """Delete all drawers for a given wing.
+    """Delete all drawers for a given wing (batched to avoid large-memory fetches).
 
     Returns:
         Number of deleted items.
     """
+    deleted = 0
     try:
-        results = collection.get(where={"wing": wing})
-        ids = results["ids"]
-        if ids:
+        while True:
+            results = collection.get(where={"wing": wing}, limit=500, include=[])
+            ids = results["ids"] if results else []
+            if not ids:
+                break
             collection.delete(ids=ids)
-        return len(ids)
+            deleted += len(ids)
     except Exception:
-        return 0
+        pass
+    return deleted
 
 def delete_by_room(collection, wing: str, room: str) -> int:
-    """Delete all drawers matching a specific wing + room.
+    """Delete all drawers matching a specific wing + room (batched to avoid large-memory fetches).
 
     Returns:
         Number of deleted items.
     """
+    deleted = 0
     try:
-        results = collection.get(where={"$and": [{"wing": wing}, {"room": room}]})
-        ids = results["ids"]
-        if ids:
+        while True:
+            results = collection.get(where={"$and": [{"wing": wing}, {"room": room}]}, limit=500, include=[])
+            ids = results["ids"] if results else []
+            if not ids:
+                break
             collection.delete(ids=ids)
-        return len(ids)
+            deleted += len(ids)
     except Exception:
-        return 0
+        pass
+    return deleted
 
 def get_all_metadata(collection, batch_size: int = 1000) -> list[dict]:
     """Fetch all document metadata from the collection (batched).

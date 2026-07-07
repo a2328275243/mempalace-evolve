@@ -56,7 +56,6 @@ def text_overlap_similarity(text_a: str, text_b: str, min_overlap_ratio: float =
     score = 0.4 * jaccard + 0.6 * containment
     return min(1.0, score)
 
-MIN_CONTENT_LENGTH = 20
 
 
 def find_similar_memories(

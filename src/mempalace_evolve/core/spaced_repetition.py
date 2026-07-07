@@ -23,13 +23,23 @@ MAX_INTERVAL_DAYS = 365.0
 # Minimum recall count before a memory becomes eligible for spaced repetition
 MIN_RECALL_COUNT = 2
 
+# Cache computed intervals (recall_count is usually small)
+_INTERVAL_CACHE: dict[int, float] = {}
+_INTERVAL_CACHE_MAX = 1000
+
 
 def _compute_interval(recall_count: int) -> float:
     """Compute the next review interval in days using the adaptive formula."""
     if recall_count < 1:
         return INITIAL_INTERVAL_DAYS
+    cached = _INTERVAL_CACHE.get(recall_count)
+    if cached is not None:
+        return cached
     raw = INITIAL_INTERVAL_DAYS * (STABILITY_FACTOR ** (recall_count - 1))
-    return min(raw, MAX_INTERVAL_DAYS)
+    result = min(raw, MAX_INTERVAL_DAYS)
+    if len(_INTERVAL_CACHE) < _INTERVAL_CACHE_MAX:
+        _INTERVAL_CACHE[recall_count] = result
+    return result
 
 
 def calculate_next_review(last_reviewed: str | None, recall_count: int) -> str:
