@@ -14,8 +14,9 @@ MemPalace Evolve repository with integrated DreamSeed Code terminal agent. Remot
 - Latest adapter parity pass aligned OpenAI and LangChain tool adapters with SDK/MCP memory semantics by forwarding `metadata`, `source`, `ttl`, `tags`, and recall `room` filters through existing tools without increasing tool count.
 - Latest REST typed-parameter parity pass added REST `ttl` and `tags` support for `/remember`, forwarding them through the existing SDK path and verifying persisted `expire_at`/tag metadata.
 - Latest import/export parity pass fixed `import_memories()` so list/file/wrapper imports preserve `source`/`source_file`, `ttl`, and `tags` alongside metadata, preventing governance fields from being dropped during memory migration.
+- Latest export fidelity pass made JSON export include complete memory metadata plus top-level `source_file`, enabling export/import round-trips to preserve provenance, tags, TTL-derived `expire_at`, and custom metadata.
 - Desktop/Electron installers and old v0.1.1 release artifacts were removed from source. Current release is `dreamseed-code-v0.2.0`.
-- Latest pushed MemPalace code commit before the current in-progress pass: `6c6d1ee` (`Align REST remember metadata parameters`).
+- Latest pushed MemPalace code commit before the current in-progress pass: `9d52bed` (`Preserve metadata fields on memory import`).
 - Local uncommitted Lite Kernel productization changes are in `bin/dreamseed-lite-kernel.js`: native DreamSeed history management, richer slash commands, MultiEdit, tool progress streaming, MCP Content-Length framing and HTTP JSON-RPC support, segmented compact summaries, skill detail loading, safer shell fallback, and tool change previews.
 - Terminal UI5 changes are now committed, pushed, packaged, and uploaded: polished box-drawing terminal UI, `/` command palette, Up/Down selection, Tab completion, Enter-to-run selected prefix match, right-bounded assistant reply blocks, tool running/done/error rows, approval/info/status blocks, queued MCP notices, Unicode-width-aware Chinese text layout, and scripted-input smoke support.
 - GitHub release `dreamseed-code-v0.2.0` now has assets:
@@ -52,9 +53,17 @@ MemPalace Evolve repository with integrated DreamSeed Code terminal agent. Remot
 - Terminal UI is improved but still the main product-polish track: next refinements could make `/resume` interactive with arrow navigation, improve tool-result collapse/expand, and make approval prompts more like Claude Code/Codex terminal UX.
 
 ## Next Step
-Continue code/system optimization with another focused pass: inspect batch operation surfaces, export fidelity, or terminal-agent runtime polish, then run full tests before any push.
+Continue code/system optimization with another focused pass: inspect batch operation surfaces, REST batch parity, or terminal-agent runtime polish, then run full tests before any push.
 
 ## Session Log
+
+### 2026-07-10 09:44
+- User asked: continue sustained optimization toward the repo goal, focusing only on code/system quality and preserving the full-test-before-upload rule.
+- Work completed: first pushed the previously blocked local commit `9d52bed` after confirming it was ahead of origin and already fully tested; researched current agent-memory provenance/governance direction; audited export fidelity after import metadata parity; found JSON export omitted full metadata and top-level `source_file`; updated `export_json()` to include complete metadata and top-level `source_file`; added tests for full metadata export and export/import round-trip preservation of source/tags/expire_at/custom metadata.
+- Files touched: `src/mempalace_evolve/export.py`, `tests/test_export.py`, `tests/test_batch_ops.py`, `.codex-project/PROJECT_MEMORY.md`; pre-existing `README.md` example change remains unstaged.
+- Verification: targeted `tests/test_export.py tests/test_batch_ops.py tests/test_new_features_v2.py` passed `60 passed`; full suite passed `650 passed, 7 skipped, 1 warning in 36.70s`; `git diff --check` passed with CRLF warnings only; generated-file scan for adaptive baselines/sqlite artifacts returned no source/test pollution.
+- Result: memory export/import now preserves provenance and governance metadata end-to-end, reducing silent data loss during migration or backup restore.
+- Next suggested move: commit and push this export fidelity pass, then inspect batch operation surfaces, REST batch parity, or terminal-agent runtime polish.
 
 ### 2026-07-09 17:57
 - User asked: continue sustained optimization toward the repo goal, focusing only on code/system quality and preserving the full-test-before-upload rule.

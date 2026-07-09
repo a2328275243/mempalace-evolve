@@ -37,9 +37,11 @@ def export_json(collection, wing: str | None = None, output: str | None = None) 
                 "content": data["documents"][i],
                 "wing": meta.get("wing", ""),
                 "room": meta.get("room", ""),
+                "source_file": meta.get("source_file", ""),
                 "importance": meta.get("importance", ""),
                 "last_accessed": meta.get("last_accessed", ""),
                 "filed_at": meta.get("filed_at", ""),
+                "metadata": dict(meta),
             })
 
     result = {

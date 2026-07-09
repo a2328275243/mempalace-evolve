@@ -144,6 +144,35 @@ class TestExportImportRoundtrip:
             import shutil
             shutil.rmtree(str(tmp), ignore_errors=True)
 
+    def test_export_import_preserves_metadata_fields(self, palace):
+        palace.remember(
+            "Export import metadata parity memory",
+            room="config",
+            metadata={"priority": "high"},
+            source="roundtrip-source",
+            ttl=3600,
+            tags=["roundtrip", "parity"],
+        )
+        export_data = palace.export(format="json")
+        import uuid
+        tmp = Path(tempfile.gettempdir()) / f"test_mempalace_{uuid.uuid4().hex[:8]}"
+        try:
+            from mempalace_evolve.sdk import MemPalace
+            fresh = MemPalace(str(tmp), wing="test")
+            result = fresh.import_memories(export_data)
+            assert result["added"] >= 1
+
+            col = fresh._get_collection()
+            batch = col.get(where={"source_file": "roundtrip-source"}, include=["metadatas"])
+            meta = batch["metadatas"][0]
+            assert meta["priority"] == "high"
+            assert meta["source_file"] == "roundtrip-source"
+            assert meta["tags"] == "roundtrip,parity"
+            assert meta["expire_at"] > datetime.now(timezone.utc).timestamp()
+        finally:
+            import shutil
+            shutil.rmtree(str(tmp), ignore_errors=True)
+
     def test_import_memories_from_export_file(self, palace, tmp_palace):
         palace.remember("File export test content", room="decisions")
         out_path = Path(tmp_palace) / "my_export.json"

@@ -49,7 +49,26 @@ class TestExportJson:
         assert "content" in mem
         assert "wing" in mem
         assert "room" in mem
+        assert "source_file" in mem
         assert "filed_at" in mem
+        assert "metadata" in mem
+
+    def test_preserves_full_metadata(self, palace):
+        palace.remember(
+            "Export metadata fidelity test",
+            room="config",
+            metadata={"priority": "high"},
+            source="export-source",
+            ttl=3600,
+            tags=["export", "parity"],
+        )
+        result = export_json(_col(palace), wing="test")
+        mem = next(m for m in result["memories"] if m["content"] == "Export metadata fidelity test")
+        assert mem["source_file"] == "export-source"
+        assert mem["metadata"]["priority"] == "high"
+        assert mem["metadata"]["source_file"] == "export-source"
+        assert mem["metadata"]["tags"] == "export,parity"
+        assert "expire_at" in mem["metadata"]
 
     def test_wing_filter(self, palace):
         palace.remember("Wing test", room="general")
