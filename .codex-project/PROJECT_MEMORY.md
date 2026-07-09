@@ -9,6 +9,7 @@ MemPalace Evolve repository with integrated DreamSeed Code terminal agent. Remot
 - Latest follow-up moved adaptive scorer learned baselines out of package source into runtime state under `MEMPALACE_ROOT` or `MEMPALACE_ADAPTIVE_BASELINES_PATH`, preventing full tests and normal use from dirtying `src/mempalace_evolve/core/.adaptive_baselines.json`.
 - Latest SDK lifecycle pass fixed public `compress_old_memories()` and `purge_expired()` entry points: archive collections now use a public `chromadb.PersistentClient`, compression passes `max_summary_chars` correctly, TTL expiry supports wing filtering, and SDK tests cover both flows.
 - Latest CLI lifecycle pass fixed `mempalace purge`, `mempalace compress`, and `mempalace consolidate`: removed unreachable duplicate branches, removed undefined `get_palace()` calls, fixed `json` scope, and added CLI dispatch tests.
+- Latest REST lifecycle pass added end-to-end FastAPI coverage for `/lifecycle/purge` and `/lifecycle/compress`, verifying the REST surface reaches the fixed SDK lifecycle paths.
 - Desktop/Electron installers and old v0.1.1 release artifacts were removed from source. Current release is `dreamseed-code-v0.2.0`.
 - Latest pushed commit: `0332abd` (`fix full kit privacy scan on Windows`), with prior UI commit `e74ce14` (`improve lite kernel terminal ui`).
 - Local uncommitted Lite Kernel productization changes are in `bin/dreamseed-lite-kernel.js`: native DreamSeed history management, richer slash commands, MultiEdit, tool progress streaming, MCP Content-Length framing and HTTP JSON-RPC support, segmented compact summaries, skill detail loading, safer shell fallback, and tool change previews.
@@ -47,9 +48,17 @@ MemPalace Evolve repository with integrated DreamSeed Code terminal agent. Remot
 - Terminal UI is improved but still the main product-polish track: next refinements could make `/resume` interactive with arrow navigation, improve tool-result collapse/expand, and make approval prompts more like Claude Code/Codex terminal UX.
 
 ## Next Step
-Continue code/system optimization with another focused pass: inspect remaining CLI/REST/API consistency and terminal-agent runtime polish, then run full tests before any push.
+Continue code/system optimization with another focused pass: inspect remaining REST/MCP/API consistency and terminal-agent runtime polish, then run full tests before any push.
 
 ## Session Log
+
+### 2026-07-09 16:30
+- User asked: continue sustained optimization toward the repo goal, focusing on code/system quality and preserving the full-test-before-upload rule.
+- Work completed: researched REST/lifecycle testing directions for memory systems; audited REST lifecycle endpoints after the SDK/CLI lifecycle fixes; added end-to-end FastAPI tests that write memories through REST, adjust lifecycle metadata through the same palace path, then call `/lifecycle/purge` and `/lifecycle/compress` to verify the endpoints reach the fixed SDK paths.
+- Files touched: `tests/test_adapters.py`, `.codex-project/PROJECT_MEMORY.md`; pre-existing `README.md` example change remains unstaged.
+- Verification: targeted `tests/test_adapters.py tests/test_lifecycle.py tests/test_sdk_v3.py tests/test_cli.py` passed `62 passed, 6 skipped, 1 warning`; full suite passed `640 passed, 6 skipped, 1 warning in 107.13s`; `git diff --check` passed with CRLF warnings only; generated-file scan for adaptive baselines/sqlite artifacts returned no source/test pollution.
+- Result: lifecycle management is now covered across SDK, CLI, and REST surfaces, reducing the risk of one entry point silently drifting from the others.
+- Next suggested move: commit and push this REST lifecycle coverage pass, then continue with MCP/API consistency checks.
 
 ### 2026-07-09 16:24
 - User asked: continue sustained optimization toward the repo goal, focusing on code/system quality and preserving the full-test-before-upload rule.

@@ -2,6 +2,8 @@
 
 import json
 
+from datetime import datetime, timedelta, timezone
+
 import pytest
 
 
@@ -149,6 +151,58 @@ class TestRestAPI:
         resp = client.post("/kg/query/service")
         assert resp.status_code == 200
         assert len(resp.json()["relations"]) >= 1
+
+    def test_lifecycle_purge_endpoint(self, tmp_palace):
+        client = self._make_client(tmp_palace)
+        resp = client.post("/remember", json={
+            "content": "Temporary REST lifecycle memory",
+            "room": "general",
+        })
+        assert resp.status_code == 200
+        drawer_id = resp.json()["drawer_id"]
+
+        from mempalace_evolve.sdk import MemPalace
+        palace = MemPalace(tmp_palace, wing="test_api")
+        col = palace._get_collection()
+        batch = col.get(ids=[drawer_id], include=["documents", "metadatas"])
+        meta = batch["metadatas"][0]
+        doc = batch["documents"][0]
+        meta["last_accessed"] = (datetime.now(timezone.utc) - timedelta(days=3)).isoformat()
+        meta["enhanced_importance"] = 0.0
+        col.update(ids=[drawer_id], documents=[doc], metadatas=[meta])
+
+        resp = client.post("/lifecycle/purge", json={"ttl_days": 1, "ttl_summary_days": 2})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["purged"] == 1
+        assert drawer_id in data["purged_ids"]
+
+    def test_lifecycle_compress_endpoint(self, tmp_palace):
+        client = self._make_client(tmp_palace)
+        contents = [
+            "REST lifecycle compression item one. Extra detail.",
+            "REST lifecycle compression item two. Extra detail.",
+        ]
+        drawer_ids = []
+        for content in contents:
+            resp = client.post("/remember", json={"content": content, "room": "archive_test"})
+            assert resp.status_code == 200
+            drawer_ids.append(resp.json()["drawer_id"])
+
+        from mempalace_evolve.sdk import MemPalace
+        palace = MemPalace(tmp_palace, wing="test_api")
+        col = palace._get_collection()
+        old = (datetime.now(timezone.utc) - timedelta(days=3)).isoformat()
+        batch = col.get(ids=drawer_ids, include=["documents", "metadatas"])
+        for doc_id, doc, meta in zip(batch["ids"], batch["documents"], batch["metadatas"]):
+            meta["last_accessed"] = old
+            col.update(ids=[doc_id], documents=[doc], metadatas=[meta])
+
+        resp = client.post("/lifecycle/compress", json={"compress_after_days": 1, "max_chars": 120})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["rooms_compressed"] >= 1
+        assert data["drawers_archived"] >= 2
 
 
 class TestMCPServer:
