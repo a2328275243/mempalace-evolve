@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 
 
@@ -196,7 +197,6 @@ def main():
         elif args.format == "markdown":
             print(result)
         else:
-            import json
             print(json.dumps(result, ensure_ascii=False, indent=2))
     elif args.command == "review":
         due = palace.get_due_for_review()
@@ -224,34 +224,14 @@ def main():
             print(f"  [{mem['similarity']:.2f}] {mem['content'][:60]}...")
 
     elif args.command == "purge":
-        palace = get_palace(args.palace)
         result = palace.purge_expired(ttl_days=args.ttl_days, ttl_summary_days=args.ttl_summary)
         print(json.dumps(result, indent=2, ensure_ascii=False))
 
     elif args.command == "compress":
-        palace = get_palace(args.palace)
         result = palace.compress_old_memories(compress_after_days=args.after_days, max_chars=args.max_chars)
         print(json.dumps(result, indent=2, ensure_ascii=False))
 
     elif args.command == "consolidate":
-        palace = get_palace(args.palace)
-        result = palace.consolidate(dry_run=args.dry_run)
-        print(json.dumps(result, indent=2, ensure_ascii=False))
-
-
-
-    elif args.command == "purge":
-        palace = get_palace(args.palace)
-        result = palace.purge_expired(ttl_days=args.ttl_days, ttl_summary_days=args.ttl_summary)
-        print(json.dumps(result, indent=2, ensure_ascii=False))
-
-    elif args.command == "compress":
-        palace = get_palace(args.palace)
-        result = palace.compress_old_memories(compress_after_days=args.after_days, max_chars=args.max_chars)
-        print(json.dumps(result, indent=2, ensure_ascii=False))
-
-    elif args.command == "consolidate":
-        palace = get_palace(args.palace)
         result = palace.consolidate(dry_run=args.dry_run)
         print(json.dumps(result, indent=2, ensure_ascii=False))
 
