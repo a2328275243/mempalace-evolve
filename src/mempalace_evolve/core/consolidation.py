@@ -18,7 +18,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from mempalace_evolve.core.chroma_helper import get_collection, get_all_metadata, add_drawer
-from mempalace_evolve.core.config import get_config, GLOBAL_CHROMA
+from mempalace_evolve.core.config import get_config
 from mempalace_evolve.core.knowledge_graph import KnowledgeGraph
 
 
@@ -84,24 +84,53 @@ def identify_duplicates(drawers, threshold=0.95):
     """识别重复记忆（基于字符级 n-gram 相似度，支持中英文）
 
     threshold 默认 0.95：仅合并几乎完全相同的记忆，避免误杀。
+
+    优化：按文本长度分桶 + 前缀预过滤，避免全量 O(N^2) 比较。
     """
     duplicates = []
 
-    for i, d1 in enumerate(drawers):
-        for j, d2 in enumerate(drawers[i+1:], start=i+1):
+    bucket_size = 50
+
+    # 按文本长度分桶；比较相邻桶，避免 49/50 这类边界长度漏检。
+    buckets: dict[int, list] = {}
+    for d in drawers:
+        doc = d.get("document", "")
+        if not doc:
+            continue
+        length_bucket = len(doc) // bucket_size
+        buckets.setdefault(length_bucket, []).append(d)
+
+    checked_pairs = set()
+    for bucket_id in sorted(buckets):
+        candidate_drawers = []
+        for nearby_bucket in (bucket_id - 1, bucket_id, bucket_id + 1):
+            candidate_drawers.extend(buckets.get(nearby_bucket, []))
+
+        n = len(candidate_drawers)
+        if n < 2:
+            continue
+        for i in range(n):
+            d1 = candidate_drawers[i]
             text1 = d1.get("document", "").lower()
-            text2 = d2.get("document", "").lower()
-
-            similarity = _text_similarity(text1, text2)
-
-            if similarity >= threshold:
-                duplicates.append({
-                    "drawer1": d1.get("id"),
-                    "drawer2": d2.get("id"),
-                    "similarity": similarity,
-                    "text1": text1[:100],
-                    "text2": text2[:100]
-                })
+            for j in range(i + 1, n):
+                d2 = candidate_drawers[j]
+                pair_key = tuple(sorted((id(d1), id(d2))))
+                if pair_key in checked_pairs:
+                    continue
+                checked_pairs.add(pair_key)
+                text2 = d2.get("document", "").lower()
+                len1, len2 = len(text1), len(text2)
+                if abs(len1 - len2) / max(len1, len2, 1) > 0.1:
+                    continue
+                similarity = _text_similarity(text1, text2)
+                if similarity >= threshold:
+                    duplicates.append({
+                        "drawer1": d1.get("id"),
+                        "drawer2": d2.get("id"),
+                        "similarity": similarity,
+                        "text1": text1[:100],
+                        "text2": text2[:100],
+                    })
 
     return duplicates
 
@@ -320,10 +349,18 @@ def update_knowledge_graph(drawers, kg: KnowledgeGraph):
     return updated
 
 
-def consolidate_daily(wing=None, dry_run=False):
+def consolidate_daily(wing=None, dry_run=False, palace_path=None, collection=None):
     """执行每日整合"""
     config = get_config()
-    collection = get_collection(str(GLOBAL_CHROMA))
+    if collection is None:
+        resolved_path = palace_path or config.resolve_palace_path(wing)
+        collection = get_collection(str(resolved_path))
+    if collection is None:
+        return {
+            "status": "error",
+            "message": "memory collection is unavailable",
+            "wing": wing or "global",
+        }
     kg = KnowledgeGraph()
 
     # 1. 获取今天的 drawers

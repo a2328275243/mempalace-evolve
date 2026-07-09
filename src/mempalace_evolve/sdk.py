@@ -182,11 +182,11 @@ class MemPalace:
         mtype = memory_type or _ROOM_TYPE_MAP.get(room, EPISODIC)
 
         # Dedup: O(1) content_hash lookup instead of O(N) get-all
-        dedup_col = self._get_collection()
+        collection = self._get_collection()
         content_hash = hashlib.md5(content.encode()).hexdigest()[:12]
-        if dedup_col is not None:
+        if collection is not None:
             try:
-                existing = dedup_col.get(
+                existing = collection.get(
                     where={"$and": [{"wing": self._wing}, {"room": room}, {"content_hash": content_hash}]},
                     include=["documents"],
                     limit=1,
@@ -198,7 +198,6 @@ class MemPalace:
                 logger.debug("Dedup check failed: %s", _e)
 
 
-        collection = self._get_collection()
         if collection is None:
             raise StorageError("Failed to initialize ChromaDB collection")
 
@@ -263,6 +262,7 @@ class MemPalace:
             chunk_index=chunk_index,
             added_by="sdk",
             extra_meta=extra_meta,
+            check_existing=False,
         )
         drawer_id = _make_drawer_id(self._wing, room, source_key, chunk_index)
         logger.debug("Stored memory %s in %s/%s", drawer_id, self._wing, room)

@@ -95,6 +95,7 @@ def add_drawer(
     chunk_index: int = 0,
     added_by: str = "manual",
     extra_meta: dict[str, Any] | None = None,
+    check_existing: bool = True,
 ) -> bool:
     """Add a single drawer (memory document) to the collection.
 
@@ -109,13 +110,13 @@ def add_drawer(
 
     drawer_id = _make_drawer_id(wing, room, source_file, chunk_index)
 
-    # Check for duplicates before adding
-    try:
-        existing = collection.get(ids=[drawer_id])
-        if existing and existing.get("ids"):
-            return False
-    except Exception:
-        pass  # If we can't check, proceed and let add handle it
+    if check_existing:
+        try:
+            existing = collection.get(ids=[drawer_id])
+            if existing and existing.get("ids"):
+                return False
+        except Exception:
+            pass  # If we can't check, proceed and let add handle it
 
     now_iso = datetime.now(timezone.utc).isoformat()
     content_hash = hashlib.md5(content.encode()).hexdigest()[:12]
@@ -254,14 +255,20 @@ def delete_by_wing(collection, wing: str) -> int:
         Number of deleted items.
     """
     deleted = 0
+    seen_ids: set[str] = set()
     try:
         while True:
             results = collection.get(where={"wing": wing}, limit=500, include=[])
             ids = results["ids"] if results else []
             if not ids:
                 break
-            collection.delete(ids=ids)
-            deleted += len(ids)
+            new_ids = [doc_id for doc_id in ids if doc_id not in seen_ids]
+            if not new_ids:
+                logger.warning("delete_by_wing made no progress for wing=%s", wing)
+                break
+            seen_ids.update(new_ids)
+            collection.delete(ids=new_ids)
+            deleted += len(new_ids)
     except Exception:
         pass
     return deleted
@@ -273,14 +280,20 @@ def delete_by_room(collection, wing: str, room: str) -> int:
         Number of deleted items.
     """
     deleted = 0
+    seen_ids: set[str] = set()
     try:
         while True:
             results = collection.get(where={"$and": [{"wing": wing}, {"room": room}]}, limit=500, include=[])
             ids = results["ids"] if results else []
             if not ids:
                 break
-            collection.delete(ids=ids)
-            deleted += len(ids)
+            new_ids = [doc_id for doc_id in ids if doc_id not in seen_ids]
+            if not new_ids:
+                logger.warning("delete_by_room made no progress for wing=%s room=%s", wing, room)
+                break
+            seen_ids.update(new_ids)
+            collection.delete(ids=new_ids)
+            deleted += len(new_ids)
     except Exception:
         pass
     return deleted

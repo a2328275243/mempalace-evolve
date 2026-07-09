@@ -7,7 +7,9 @@ is either rejected or merged with the existing one.
 
 from __future__ import annotations
 
+import functools
 import logging
+import re
 from typing import Any
 
 logger = logging.getLogger("mempalace_evolve.core.dedup")
@@ -19,6 +21,7 @@ DEFAULT_SIMILARITY_THRESHOLD = 0.85
 MIN_CONTENT_LENGTH = 20
 
 
+@functools.lru_cache(maxsize=512)
 def text_overlap_similarity(text_a: str, text_b: str, min_overlap_ratio: float = 0.3) -> float:
     """Stage-2 semantic text overlap check using word overlap + Jaccard.
 
@@ -36,8 +39,11 @@ def text_overlap_similarity(text_a: str, text_b: str, min_overlap_ratio: float =
     if not text_a or not text_b:
         return 0.0
 
-    def tokenize(s):
-        return set(s.lower().split())
+    def tokenize(s: str) -> set[str]:
+        normalized = s.lower()
+        latin_tokens = re.findall(r"[a-z0-9]+", normalized)
+        cjk_tokens = re.findall(r"[\u4e00-\u9fff]", normalized)
+        return set(latin_tokens + cjk_tokens)
 
     tokens_a = tokenize(text_a)
     tokens_b = tokenize(text_b)
@@ -54,6 +60,8 @@ def text_overlap_similarity(text_a: str, text_b: str, min_overlap_ratio: float =
 
     # Weighted combination: 40% Jaccard + 60% containment
     score = 0.4 * jaccard + 0.6 * containment
+    if containment < min_overlap_ratio:
+        return min(score, containment)
     return min(1.0, score)
 
 

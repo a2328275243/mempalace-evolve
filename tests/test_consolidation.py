@@ -89,6 +89,16 @@ class TestIdentifyDuplicates:
         assert "drawer2" in dup
         assert dup["similarity"] >= 0.95
 
+    def test_identical_documents_across_length_bucket_boundary(self):
+        document = ("a" * 49).strip()
+        drawers = [
+            {"id": "a", "document": document},
+            {"id": "b", "document": document + "."},
+        ]
+        result = identify_duplicates(drawers)
+        assert len(result) == 1
+        assert result[0]["similarity"] >= 0.95
+
 
 # ---------------------------------------------------------------------------
 # identify_conflicts

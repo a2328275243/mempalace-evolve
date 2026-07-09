@@ -13,6 +13,7 @@ import pytest
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _TEST_ROOT = _REPO_ROOT / ".test_tmp"
 _TEST_ROOT.mkdir(parents=True, exist_ok=True)
+os.environ.setdefault("MEMPALACE_ROOT", str(_TEST_ROOT / "global_mempalace"))
 
 
 def _cleanup_test_root():

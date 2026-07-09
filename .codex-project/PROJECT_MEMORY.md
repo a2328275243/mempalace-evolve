@@ -5,6 +5,7 @@ MemPalace Evolve repository with integrated DreamSeed Code terminal agent. Remot
 
 ## Current Snapshot
 - Repository contains both MemPalace Evolve Python package (`src/mempalace_evolve/`) and DreamSeed Code terminal agent (`bin/dreamseed-agent.js`, `bin/dreamseed-lite-kernel.js`).
+- Latest code-quality pass focused on MemPalace core reliability/performance rather than community/docs work: safer consolidation dedup bucketing, multilingual overlap dedup, Chroma delete loop progress guards, faster SDK `remember()` hot path, test isolation for global Chroma paths, and dev extras that can run MCP tests.
 - Desktop/Electron installers and old v0.1.1 release artifacts were removed from source. Current release is `dreamseed-code-v0.2.0`.
 - Latest pushed commit: `0332abd` (`fix full kit privacy scan on Windows`), with prior UI commit `e74ce14` (`improve lite kernel terminal ui`).
 - Local uncommitted Lite Kernel productization changes are in `bin/dreamseed-lite-kernel.js`: native DreamSeed history management, richer slash commands, MultiEdit, tool progress streaming, MCP Content-Length framing and HTTP JSON-RPC support, segmented compact summaries, skill detail loading, safer shell fallback, and tool change previews.
@@ -36,15 +37,24 @@ MemPalace Evolve repository with integrated DreamSeed Code terminal agent. Remot
 - MemPalace-only users install from source with `pip install -e ".[mcp]"`.
 
 ## Open Loops
+- Existing uncommitted changes outside the latest code pass remain in `README.md` and `src/mempalace_evolve/core/.adaptive_baselines.json`; README top DreamSeed Contest template must remain untouched.
 - The new Lite Kernel productization changes are local only; they have passed smoke checks but are not committed, packaged, pushed, or uploaded yet.
 - Real external-user smoke is still useful: download `DreamSeed-Code-0.2.0-Setup.exe`, double-click, then run `dreamseed --help` and `dreamseed` on another Windows machine.
 - The EXE is unsigned, so Windows SmartScreen may warn. If this becomes a problem, future release work should add code signing or keep the full zip as the low-friction fallback.
 - Terminal UI is improved but still the main product-polish track: next refinements could make `/resume` interactive with arrow navigation, improve tool-result collapse/expand, and make approval prompts more like Claude Code/Codex terminal UX.
 
 ## Next Step
-Review the local `bin/dreamseed-lite-kernel.js` changes, then either run a real provider regression or package/push a new release if accepted.
+Continue code/system optimization with another focused pass: inspect memory lifecycle/consolidation encoding and API ergonomics, then run full tests before any push.
 
 ## Session Log
+
+### 2026-07-09 12:24
+- User asked: continue sustained optimization of `a2328275243/mempalace-evolve`, focus on code/system quality only, preserve README top contest template, avoid unnecessary C drive installs, verify and record every round, and run complete tests before upload.
+- Work completed: researched current agent-memory themes (operation standardization, lifecycle/consolidation, dedup/merge, retrieval stability); installed dev dependencies in repo-local `.venv`; fixed consolidation duplicate detection so length buckets compare adjacent buckets; improved text overlap dedup tokenization for Chinese/no-space text and made `min_overlap_ratio` effective; made `consolidate_daily()` injectable/test-isolated instead of hardcoding `GLOBAL_CHROMA`; isolated tests with repo-local `MEMPALACE_ROOT`; added Chroma delete loop progress guards; optimized SDK `remember()` by avoiding duplicate collection lookup and duplicate ID precheck; expanded `dev` extra so full tests include API/MCP/LangChain extras required by the suite; added regression tests.
+- Files touched: `pyproject.toml`, `src/mempalace_evolve/core/chroma_helper.py`, `src/mempalace_evolve/core/consolidation.py`, `src/mempalace_evolve/core/dedup.py`, `src/mempalace_evolve/core/lifecycle.py`, `src/mempalace_evolve/sdk.py`, `tests/conftest.py`, `tests/test_consolidation.py`, `tests/test_dedup.py`, `.codex-project/PROJECT_MEMORY.md`.
+- Verification: targeted tests `tests/test_consolidation.py tests/test_dedup.py tests/test_lifecycle.py` passed 81/81; `tests/benchmarks/test_performance.py` passed 6/6 after SDK hot-path optimization; `tests/test_chroma_helper.py` passed 26/26 after delete-loop guard; full suite passed `634 passed, 4 skipped, 1 warning in 83.77s`; `git diff --check` passed with CRLF warnings only.
+- Result: core memory dedup/consolidation and Chroma deletion behavior are safer, SDK single-write throughput benchmark is stable, and a fresh dev install can run MCP verification tests.
+- Next suggested move: commit and push this focused code/system pass, leaving pre-existing `README.md` and `.adaptive_baselines.json` changes untouched unless the user asks to include them.
 
 ### 2026-06-22 15:45
 - User asked: implement the prioritized Lite Kernel improvements and update the terminal UI based on the old/new kernel comparison.

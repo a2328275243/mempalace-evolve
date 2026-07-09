@@ -6,6 +6,7 @@ from mempalace_evolve.core.dedup import (
     find_similar_memories,
     check_and_deduplicate,
     merge_similar_content,
+    text_overlap_similarity,
     DEFAULT_SIMILARITY_THRESHOLD,
     MIN_CONTENT_LENGTH,
 )
@@ -18,6 +19,24 @@ from mempalace_evolve.core.dedup import (
 def _col(palace):
     from mempalace_evolve.core.chroma_helper import get_collection
     return get_collection(str(palace.path / "palace"), create=True)
+
+
+# ---------------------------------------------------------------------------
+# text_overlap_similarity
+# ---------------------------------------------------------------------------
+
+class TestTextOverlapSimilarity:
+    def test_chinese_text_overlap_without_spaces(self):
+        score = text_overlap_similarity("项目使用两阶段检索管线", "两阶段检索管线用于项目记忆")
+        assert score > 0.3
+
+    def test_min_overlap_ratio_caps_weak_matches(self):
+        score = text_overlap_similarity(
+            "alpha beta gamma",
+            "alpha delta epsilon",
+            min_overlap_ratio=0.5,
+        )
+        assert score < 0.5
 
 
 # ---------------------------------------------------------------------------

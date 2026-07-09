@@ -303,37 +303,13 @@ def check_admission(collection, wing: str,
             "suggestion": "run mempalace_lifecycle_compress to free space",
         }
 
-    # 使用 where 过滤统计 wing 计数（避免全表扫描）
+    # Prefer ChromaDB's metadata filter so admission checks do not scan every drawer.
     try:
         wing_results = collection.get(where={"wing": wing}, include=[])
         wing_count = len(wing_results["ids"])
     except Exception:
-        # 回退：使用 taxonomy 缓存（如果可用）代替全表扫描
-        try:
-            from mempalace_evolve.core.chroma_helper import get_collection
-            from mempalace_evolve.core.config import GLOBAL_CHROMA
-
-            # 尝试导入 mcp_tools_read，如果不存在则使用备用方法
-            try:
-                from mcp_tools_read import _get_taxonomy_cached
-                col = get_collection(str(GLOBAL_CHROMA))
-                taxonomy = _get_taxonomy_cached(col)
-                wing_count = sum(taxonomy.get(wing, {}).values())
-            except ImportError:
-                # mcp_tools_read 不存在，使用备用计数方法
-                logger.warning("mcp_tools_read not available - using fallback wing count")
-                col = get_collection(str(GLOBAL_CHROMA), create=False)
-                if col:
-                    try:
-                        results = col.get(where={"wing": wing}, include=[])
-                        wing_count = len(results.get("ids", []))
-                    except Exception:
-                        wing_count = 0
-                else:
-                    wing_count = 0
-        except Exception as e:
-            logger.warning(f"Wing count fallback failed: {e}")
-            wing_count = 0
+        logger.warning("Wing count query failed for wing=%s", wing, exc_info=True)
+        wing_count = 0
 
     if wing_count >= max_per_wing:
         return {
