@@ -19,6 +19,7 @@ MemPalace Evolve repository with integrated DreamSeed Code terminal agent. Remot
 - Latest MCP/async batch parity pass added MCP `batch_remember`, `batch_recall`, and `batch_forget` tools, and fixed AsyncMemPalace batch/recall wrappers so threshold/hybrid parameters align with the sync SDK without passing unsupported keywords.
 - Latest CI hardening pass made the full `src/` tree pass the repository's GitHub Actions ruff check and ruff format gates, then verified the package with coverage tests, doctor/import smoke checks, build, and twine metadata validation.
 - Latest post-push CI follow-up found GitHub Actions `Tests` failed only on Python 3.10 after `7fbb329`; fixed the likely 3.10 import incompatibility by using a `typing_extensions.Self` fallback and declaring `typing-extensions` for Python <3.11.
+- Latest Windows CI follow-up found the remaining `CI` failure was `windows-latest` running the Bash-style multiline pytest command under PowerShell; changed `.github/workflows/ci.yml` coverage test command to a cross-shell single line and verified it locally in PowerShell.
 - Desktop/Electron installers and old v0.1.1 release artifacts were removed from source. Current release is `dreamseed-code-v0.2.0`.
 - Latest pushed MemPalace code commit before the current in-progress pass: `2c7bb85` (`Add REST batch memory endpoints`).
 - Local uncommitted Lite Kernel productization changes are in `bin/dreamseed-lite-kernel.js`: native DreamSeed history management, richer slash commands, MultiEdit, tool progress streaming, MCP Content-Length framing and HTTP JSON-RPC support, segmented compact summaries, skill detail loading, safer shell fallback, and tool change previews.
@@ -60,6 +61,14 @@ MemPalace Evolve repository with integrated DreamSeed Code terminal agent. Remot
 Continue code/system optimization with another focused pass: inspect OpenAI/LangChain batch parity tradeoffs, typed model coverage, or terminal-agent runtime polish; before uploading, rerun the GitHub Actions-equivalent lint, format, full coverage tests, doctor/import smoke, build, and twine checks.
 
 ## Session Log
+
+### 2026-07-10 10:52
+- User asked: README may be modified below the top DreamSeed Contest/template area, but continue keeping uploads reliable.
+- Work completed: checked new GitHub Actions after `df5ec09`; `Tests` succeeded, including the previously failing Python 3.10 matrix; `CI` succeeded on lint, Ubuntu 3.10/3.11/3.12/3.13, and macOS 3.12, but failed only on `windows-latest, 3.12` at the `Run tests with coverage` step; inferred the root cause from workflow metadata and the CI command: `.github/workflows/ci.yml` used Bash `\` line continuations in a job that runs under PowerShell on Windows; changed the coverage pytest command to a single cross-shell line.
+- Files touched: `.github/workflows/ci.yml`, `.codex-project/PROJECT_MEMORY.md`; pre-existing `README.md` example change remains unstaged and can be handled separately below the protected top template.
+- Verification: local PowerShell execution of the exact single-line coverage command through `.venv` passed `655 passed, 9 skipped, 1 warning`; package build passed; `twine check dist/*` passed; import smoke passed; `python -m mempalace_evolve.cli doctor` passed `4/4`.
+- Result: Windows CI should now run the same coverage test command instead of failing at shell parsing.
+- Next suggested move: commit and push the workflow fix, then re-check GitHub Actions for the new head commit until both `Tests` and `CI` are green.
 
 ### 2026-07-10 10:43
 - User asked: continue, and be more careful because GitHub Actions had previously found pushed code did not run.
