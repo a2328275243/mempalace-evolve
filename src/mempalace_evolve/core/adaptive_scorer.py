@@ -125,39 +125,69 @@ from pathlib import Path
 
 logger = logging.getLogger("mempalace.adaptive_scorer")
 
-_BASELINES_PATH = Path(__file__).parent / ".adaptive_baselines.json"
+_BASELINES_ENV = "MEMPALACE_ADAPTIVE_BASELINES_PATH"
+_BASELINES_FILENAME = "adaptive_baselines.json"
 
 # 内存缓存，避免每次搜索都读磁盘
 _baselines_cache = None
 _baselines_mtime = 0.0
+_baselines_path_cache: Path | None = None
+
+
+def get_baselines_path() -> Path:
+    """Return the runtime path for adaptive scoring baselines.
+
+    Baselines are learned runtime state, so they live outside the package
+    source tree. Tests and embedding applications can override the path with
+    MEMPALACE_ADAPTIVE_BASELINES_PATH.
+    """
+    override = os.environ.get(_BASELINES_ENV)
+    if override:
+        return Path(override).expanduser()
+
+    from mempalace_evolve.core.config import GLOBAL_PALACE
+
+    return GLOBAL_PALACE / _BASELINES_FILENAME
 
 
 def _load_baselines() -> dict:
     """加载历史距离基线（带内存缓存）"""
-    global _baselines_cache, _baselines_mtime
+    global _baselines_cache, _baselines_mtime, _baselines_path_cache
+    baselines_path = get_baselines_path()
     try:
-        current_mtime = _BASELINES_PATH.stat().st_mtime if _BASELINES_PATH.exists() else 0.0
-        if _baselines_cache is not None and current_mtime == _baselines_mtime:
+        current_mtime = baselines_path.stat().st_mtime if baselines_path.exists() else 0.0
+        if (
+            _baselines_cache is not None
+            and _baselines_path_cache == baselines_path
+            and current_mtime == _baselines_mtime
+        ):
             return _baselines_cache
-        if _BASELINES_PATH.exists():
-            data = json.loads(_BASELINES_PATH.read_text(encoding="utf-8"))
+        if baselines_path.exists():
+            data = json.loads(baselines_path.read_text(encoding="utf-8"))
             _baselines_cache = data
             _baselines_mtime = current_mtime
+            _baselines_path_cache = baselines_path
             return data
     except Exception:
         logger.debug("failed to load adaptive baselines", exc_info=True)
+    _baselines_cache = {}
+    _baselines_mtime = 0.0
+    _baselines_path_cache = baselines_path
     return {}
 
 
 def _save_baselines(baselines: dict):
     """保存历史距离基线（原子写入，同时更新内存缓存）"""
-    global _baselines_cache, _baselines_mtime
+    global _baselines_cache, _baselines_mtime, _baselines_path_cache
+    baselines_path = get_baselines_path()
     try:
         from mempalace_evolve.core.config import atomic_write_json
-        atomic_write_json(_BASELINES_PATH, baselines, ensure_ascii=False, indent=2)
+        baselines_path.parent.mkdir(parents=True, exist_ok=True)
+        atomic_write_json(baselines_path, baselines, ensure_ascii=False, indent=2)
         _baselines_cache = baselines
+        _baselines_path_cache = baselines_path
         try:
-            _baselines_mtime = _BASELINES_PATH.stat().st_mtime
+            _baselines_mtime = baselines_path.stat().st_mtime
         except Exception:
             _baselines_mtime = 0.0
     except Exception:

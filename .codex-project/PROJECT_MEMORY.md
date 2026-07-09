@@ -6,6 +6,7 @@ MemPalace Evolve repository with integrated DreamSeed Code terminal agent. Remot
 ## Current Snapshot
 - Repository contains both MemPalace Evolve Python package (`src/mempalace_evolve/`) and DreamSeed Code terminal agent (`bin/dreamseed-agent.js`, `bin/dreamseed-lite-kernel.js`).
 - Latest code-quality pass focused on MemPalace core reliability/performance rather than community/docs work: safer consolidation dedup bucketing, multilingual overlap dedup, Chroma delete loop progress guards, faster SDK `remember()` hot path, test isolation for global Chroma paths, and dev extras that can run MCP tests.
+- Latest follow-up moved adaptive scorer learned baselines out of package source into runtime state under `MEMPALACE_ROOT` or `MEMPALACE_ADAPTIVE_BASELINES_PATH`, preventing full tests and normal use from dirtying `src/mempalace_evolve/core/.adaptive_baselines.json`.
 - Desktop/Electron installers and old v0.1.1 release artifacts were removed from source. Current release is `dreamseed-code-v0.2.0`.
 - Latest pushed commit: `0332abd` (`fix full kit privacy scan on Windows`), with prior UI commit `e74ce14` (`improve lite kernel terminal ui`).
 - Local uncommitted Lite Kernel productization changes are in `bin/dreamseed-lite-kernel.js`: native DreamSeed history management, richer slash commands, MultiEdit, tool progress streaming, MCP Content-Length framing and HTTP JSON-RPC support, segmented compact summaries, skill detail loading, safer shell fallback, and tool change previews.
@@ -37,7 +38,7 @@ MemPalace Evolve repository with integrated DreamSeed Code terminal agent. Remot
 - MemPalace-only users install from source with `pip install -e ".[mcp]"`.
 
 ## Open Loops
-- Existing uncommitted changes outside the latest code pass remain in `README.md` and `src/mempalace_evolve/core/.adaptive_baselines.json`; README top DreamSeed Contest template must remain untouched.
+- Existing uncommitted README example change remains outside the latest code pass; README top DreamSeed Contest template must remain untouched.
 - The new Lite Kernel productization changes are local only; they have passed smoke checks but are not committed, packaged, pushed, or uploaded yet.
 - Real external-user smoke is still useful: download `DreamSeed-Code-0.2.0-Setup.exe`, double-click, then run `dreamseed --help` and `dreamseed` on another Windows machine.
 - The EXE is unsigned, so Windows SmartScreen may warn. If this becomes a problem, future release work should add code signing or keep the full zip as the low-friction fallback.
@@ -47,6 +48,14 @@ MemPalace Evolve repository with integrated DreamSeed Code terminal agent. Remot
 Continue code/system optimization with another focused pass: inspect memory lifecycle/consolidation encoding and API ergonomics, then run full tests before any push.
 
 ## Session Log
+
+### 2026-07-09 12:34
+- User asked: continue the sustained optimization goal, focusing on code/system quality only and keeping full-test-before-upload discipline.
+- Work completed: identified `src/mempalace_evolve/core/.adaptive_baselines.json` as mutable runtime state that was being changed by tests; added `get_baselines_path()` with `MEMPALACE_ADAPTIVE_BASELINES_PATH` override and default runtime storage under `MEMPALACE_ROOT`; made baseline cache path-aware; created parent dirs before atomic save; isolated test baseline storage under `.test_tmp`; deleted the tracked generated baseline JSON and ignored it.
+- Files touched: `.gitignore`, `src/mempalace_evolve/core/adaptive_scorer.py`, `tests/conftest.py`, `tests/test_adaptive_scorer.py`, `.codex-project/PROJECT_MEMORY.md`; pre-existing `README.md` change remains unstaged.
+- Verification: `tests/test_adaptive_scorer.py` passed 26/26; `tests/test_config.py tests/test_layers.py` passed 53/53; full suite passed `635 passed, 4 skipped, 1 warning in 86.66s`; `git diff --check` passed with CRLF warnings only; `fd -H "adaptive_baselines" . src tests .test_tmp` returned no generated baseline file.
+- Result: adaptive scoring no longer writes learned runtime state into package source, so full tests are cleaner and reproducible without mutating tracked source files.
+- Next suggested move: commit and push this runtime-state isolation pass, then inspect remaining README example change separately without touching the DreamSeed Contest template.
 
 ### 2026-07-09 12:24
 - User asked: continue sustained optimization of `a2328275243/mempalace-evolve`, focus on code/system quality only, preserve README top contest template, avoid unnecessary C drive installs, verify and record every round, and run complete tests before upload.

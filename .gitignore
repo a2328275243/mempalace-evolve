@@ -22,6 +22,7 @@ palace/
 .mempalace/
 .dreamseed-memory/
 memory-candidates/
+src/mempalace_evolve/core/.adaptive_baselines.json
 
 .ruff_cache/
 .pytest_cache/

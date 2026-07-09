@@ -10,6 +10,7 @@ import pytest
 from mempalace_evolve.core.adaptive_scorer import (
     compute_confidence,
     adjust_scores,
+    get_baselines_path,
     update_wing_baseline,
     get_wing_adjusted_confidence,
 )
@@ -156,6 +157,17 @@ class TestAdjustScores:
 # ---------------------------------------------------------------------------
 
 class TestWingBaselines:
+    def test_baselines_path_can_be_overridden(self, monkeypatch, tmp_path):
+        path = tmp_path / "runtime" / "baselines.json"
+        monkeypatch.setenv("MEMPALACE_ADAPTIVE_BASELINES_PATH", str(path))
+
+        assert get_baselines_path() == path
+        update_wing_baseline("isolated_wing", [0.4, 0.6])
+
+        assert path.exists()
+        data = json.loads(path.read_text(encoding="utf-8"))
+        assert "isolated_wing" in data
+
     def test_update_wing_baseline_empty_distances(self):
         # Should not crash
         update_wing_baseline("test_wing", [])
