@@ -21,6 +21,12 @@ from mempalace_evolve.core.config import get_config, COLLECTION_NAME, GLOBAL_CHR
 from mempalace_evolve.core.embeddings import get_cached_ef
 
 logger = logging.getLogger("mempalace.chroma")
+DEFAULT_HNSW_METADATA = {
+    "hnsw:space": "cosine",
+    "hnsw:construction_ef": 64,
+    "hnsw:M": 16,
+    "hnsw:search_ef": 64,
+}
 
 # ---------------------------------------------------------------------------
 # ChromaDB client + collection singleton cache (thread-safe)
@@ -72,7 +78,7 @@ def get_collection(palace_path: str = None, create: bool = True) -> chromadb.Col
     if create:
         col = client.get_or_create_collection(
             name=COLLECTION_NAME,
-            metadata={"hnsw:space": "cosine", "hnsw:construction_ef": 200, "hnsw:M": 32, "hnsw:search_ef": 200},
+            metadata=DEFAULT_HNSW_METADATA,
             embedding_function=ef,
         )
     else:

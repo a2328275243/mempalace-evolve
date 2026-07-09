@@ -1,5 +1,6 @@
 """Tests for adapters: OpenAI, REST API, MCP server."""
 
+import asyncio
 import json
 
 from datetime import datetime, timedelta, timezone
@@ -206,6 +207,10 @@ class TestRestAPI:
 
 
 class TestMCPServer:
+    @staticmethod
+    def _tool_json(result):
+        return json.loads(result.content[0].text)
+
     def test_create_mcp_server(self, tmp_palace):
         try:
             from mempalace_evolve.adapters.mcp_server import create_mcp_server
@@ -218,8 +223,69 @@ class TestMCPServer:
         try:
             from mempalace_evolve.adapters.mcp_server import create_mcp_server
             mcp = create_mcp_server(palace_path=tmp_palace, wing="test_mcp")
-            # FastMCP stores tools internally
-            # Check that the server object exists and has name
             assert mcp.name == "mempalace"
+            tools = asyncio.run(mcp.list_tools())
+            names = {tool.name for tool in tools}
+            assert {"remember", "recall", "forget"}.issubset(names)
+            assert {"purge_expired", "compress_old_memories", "consolidate"}.issubset(names)
+        except ImportError:
+            pass
+
+    def test_mcp_remember_forwards_sdk_metadata(self, tmp_palace):
+        try:
+            from mempalace_evolve.adapters.mcp_server import create_mcp_server
+            from mempalace_evolve.sdk import MemPalace
+
+            mcp = create_mcp_server(palace_path=tmp_palace, wing="test_mcp")
+            result = asyncio.run(mcp.call_tool("remember", {
+                "content": "MCP metadata forwarding test",
+                "room": "config",
+                "metadata": {"priority": "high"},
+                "source": "mcp-test-source",
+                "ttl": 3600,
+                "tags": ["mcp", "agent"],
+            }))
+            data = self._tool_json(result)
+            assert data["stored"] is True
+
+            palace = MemPalace(tmp_palace, wing="test_mcp")
+            col = palace._get_collection()
+            batch = col.get(ids=[data["id"]], include=["metadatas"])
+            meta = batch["metadatas"][0]
+            assert meta["priority"] == "high"
+            assert meta["source_file"] == "mcp-test-source"
+            assert meta["tags"] == "mcp,agent"
+            assert meta["expire_at"] > datetime.now(timezone.utc).timestamp()
+        except ImportError:
+            pass
+
+    def test_mcp_lifecycle_purge_tool(self, tmp_palace):
+        try:
+            from mempalace_evolve.adapters.mcp_server import create_mcp_server
+            from mempalace_evolve.sdk import MemPalace
+
+            mcp = create_mcp_server(palace_path=tmp_palace, wing="test_mcp")
+            stored = asyncio.run(mcp.call_tool("remember", {
+                "content": "Temporary MCP lifecycle memory",
+                "room": "general",
+            }))
+            drawer_id = self._tool_json(stored)["id"]
+
+            palace = MemPalace(tmp_palace, wing="test_mcp")
+            col = palace._get_collection()
+            batch = col.get(ids=[drawer_id], include=["documents", "metadatas"])
+            meta = batch["metadatas"][0]
+            doc = batch["documents"][0]
+            meta["last_accessed"] = (datetime.now(timezone.utc) - timedelta(days=3)).isoformat()
+            meta["enhanced_importance"] = 0.0
+            col.update(ids=[drawer_id], documents=[doc], metadatas=[meta])
+
+            result = asyncio.run(mcp.call_tool("purge_expired", {
+                "ttl_days": 1,
+                "ttl_summary_days": 2,
+            }))
+            data = self._tool_json(result)
+            assert data["purged"] == 1
+            assert drawer_id in data["purged_ids"]
         except ImportError:
             pass

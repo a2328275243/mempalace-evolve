@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import os
+import re
 import threading
 import time as _time
 from typing import Any, Dict, Sequence, cast
@@ -22,14 +24,22 @@ EMBEDDING_DIM = 384
 
 
 def _hash_embed(texts: list[str], dim: int = EMBEDDING_DIM) -> list[list[float]]:
-    """Deterministic fallback: hash-based embeddings for when ONNX is unavailable."""
+    """Deterministic lexical hash embeddings for when ONNX is unavailable."""
     embeddings = []
     for text in texts:
         vec = [0.0] * dim
-        for i in range(dim):
-            h = hashlib.md5(f"{i}:{text}".encode()).digest()
-            val = int.from_bytes(h[:4], "big", signed=True) / (2**31)
-            vec[i] = val / 100.0
+        raw_tokens = re.findall(r"[a-z0-9]+|[\u4e00-\u9fff]", str(text).lower())
+        if not raw_tokens:
+            raw_tokens = [str(text).lower()]
+        features = []
+        for token in raw_tokens:
+            features.append(token)
+            if len(token) > 16:
+                features.extend(token)
+        for token in features:
+            h = hashlib.md5(token.encode()).digest()
+            idx = int.from_bytes(h[:4], "big") % dim
+            vec[idx] += 1.0
         norm = sum(v * v for v in vec) ** 0.5
         if norm > 0:
             vec = [v / norm for v in vec]
@@ -44,6 +54,7 @@ class CachedEmbeddingFunction:
         self._onnx_ef = None
         self._init_lock = threading.Lock()
         self._use_fallback = False
+        self._backend = os.environ.get("MEMPALACE_EMBEDDING_BACKEND", "auto").strip().lower()
         self._load_time = 0.0
         self._call_count = 0
 
@@ -52,6 +63,9 @@ class CachedEmbeddingFunction:
             return
         with self._init_lock:
             if self._onnx_ef is not None or self._use_fallback:
+                return
+            if self._backend == "hash":
+                self._use_fallback = True
                 return
             try:
                 from chromadb.utils.embedding_functions import ONNXMiniLM_L6_V2
@@ -137,6 +151,7 @@ def get_ef_status() -> dict:
     ef = get_cached_ef()
     return {
         "loaded": _EF_LOAD_ATTEMPTED,
+        "backend": ef._backend if ef else "unknown",
         "fallback": ef.is_fallback if ef else True,
         "load_time_s": round(ef._load_time, 2) if ef else 0,
         "call_count": ef._call_count if ef else 0,

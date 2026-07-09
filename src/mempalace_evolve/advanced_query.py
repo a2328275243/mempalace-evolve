@@ -214,6 +214,16 @@ class AdvancedQuery:
 
         # Sort by score descending
         output.sort(key=lambda x: x.get("_score", 0), reverse=True)
+        if not output and (room or memory_types or tags or metadata_filter):
+            return self.filter_by_metadata(
+                limit=limit,
+                room=room,
+                memory_types=memory_types,
+                tags=tags,
+                time_from=time_from,
+                time_to=time_to,
+                metadata_filter=metadata_filter,
+            )
         return output[:limit]
 
     def filter_by_metadata(
@@ -317,4 +327,3 @@ class AdvancedQuery:
 
 
 __all__ = ["AdvancedQuery"]
-

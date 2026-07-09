@@ -19,7 +19,9 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 from pathlib import Path
+from typing import Any
 
 
 def create_mcp_server(palace_path: str | None = None, wing: str = "global"):
@@ -41,10 +43,18 @@ def create_mcp_server(palace_path: str | None = None, wing: str = "global"):
     wing = os.environ.get("MEMPALACE_WING", wing)
 
     palace = MemPalace(palace_path, wing=wing)
+    _write_lock = threading.Lock()
     mcp = FastMCP("mempalace")
 
     @mcp.tool()
-    def remember(content: str, room: str = "general") -> str:
+    def remember(
+        content: str,
+        room: str = "general",
+        metadata: dict[str, Any] | None = None,
+        source: str = "",
+        ttl: int | None = None,
+        tags: list[str] | None = None,
+    ) -> str:
         """Store important information for future sessions.
 
         Use this when you learn something worth remembering:
@@ -55,8 +65,19 @@ def create_mcp_server(palace_path: str | None = None, wing: str = "global"):
             room: Category — one of: decisions, errors, architecture,
                   config, preferences, progress, general
         """
-        drawer_id = palace.remember(content, room=room)
-        return json.dumps({"stored": True, "id": drawer_id, "wing": wing, "room": room})
+        with _write_lock:
+            drawer_id = palace.remember(
+                content,
+                room=room,
+                metadata=metadata,
+                source=source,
+                ttl=ttl,
+                tags=tags,
+            )
+        return json.dumps(
+            {"stored": True, "id": drawer_id, "wing": wing, "room": room},
+            ensure_ascii=False,
+        )
 
     @mcp.tool()
     def recall(query: str, limit: int = 5, room: str | None = None) -> str:
@@ -94,7 +115,8 @@ def create_mcp_server(palace_path: str | None = None, wing: str = "global"):
             predicate: The relationship (e.g. "uses", "prefers", "depends_on")
             object: The target (e.g. "FastAPI", "dark_mode", "database")
         """
-        palace.add_fact(subject, predicate, object)
+        with _write_lock:
+            palace.add_fact(subject, predicate, object)
         return json.dumps({"added": True, "triple": [subject, predicate, object]})
 
     @mcp.tool()
@@ -170,8 +192,50 @@ def create_mcp_server(palace_path: str | None = None, wing: str = "global"):
         Args:
             memory_id: The drawer ID returned by remember()
         """
-        ok = palace.forget(memory_id)
+        with _write_lock:
+            ok = palace.forget(memory_id)
         return json.dumps({"deleted": ok, "id": memory_id})
+
+    @mcp.tool()
+    def purge_expired(ttl_days: int = 90, ttl_summary_days: int = 180) -> str:
+        """Purge memories that have expired by lifecycle rules.
+
+        Args:
+            ttl_days: TTL for low-importance memories
+            ttl_summary_days: TTL for summarized memories
+        """
+        with _write_lock:
+            result = palace.purge_expired(
+                ttl_days=ttl_days,
+                ttl_summary_days=ttl_summary_days,
+            )
+        return json.dumps(result, ensure_ascii=False, default=str)
+
+    @mcp.tool()
+    def compress_old_memories(compress_after_days: int = 60, max_chars: int = 800) -> str:
+        """Compress old unused memories into archive summaries.
+
+        Args:
+            compress_after_days: Age threshold in days
+            max_chars: Maximum summary length
+        """
+        with _write_lock:
+            result = palace.compress_old_memories(
+                compress_after_days=compress_after_days,
+                max_chars=max_chars,
+            )
+        return json.dumps(result, ensure_ascii=False, default=str)
+
+    @mcp.tool()
+    def consolidate(dry_run: bool = False) -> str:
+        """Deduplicate and merge similar memories.
+
+        Args:
+            dry_run: If True, report planned changes without writing them
+        """
+        with _write_lock:
+            result = palace.consolidate(dry_run=dry_run)
+        return json.dumps(result, ensure_ascii=False, default=str)
 
     @mcp.tool()
     def evolve(transcript: str = "") -> str:
@@ -183,7 +247,8 @@ def create_mcp_server(palace_path: str | None = None, wing: str = "global"):
         Args:
             transcript: Session transcript to analyze (optional)
         """
-        report = palace.evolve(transcript=transcript or None)
+        with _write_lock:
+            report = palace.evolve(transcript=transcript or None)
         return json.dumps(report)
 
     return mcp
