@@ -227,6 +227,29 @@ class TestRestAPI:
         assert resp.status_code == 200
         assert resp.json()["count"] >= 1
 
+    def test_remember_forwards_sdk_metadata(self, tmp_palace):
+        client = self._make_client(tmp_palace)
+        resp = client.post("/remember", json={
+            "content": "REST adapter metadata test",
+            "room": "config",
+            "metadata": {"priority": "high"},
+            "source": "rest-test-source",
+            "ttl": 3600,
+            "tags": ["rest", "agent"],
+        })
+        assert resp.status_code == 200
+        drawer_id = resp.json()["drawer_id"]
+
+        from mempalace_evolve.sdk import MemPalace
+        palace = MemPalace(tmp_palace, wing="test_api")
+        col = palace._get_collection()
+        batch = col.get(ids=[drawer_id], include=["metadatas"])
+        meta = batch["metadatas"][0]
+        assert meta["priority"] == "high"
+        assert meta["source_file"] == "rest-test-source"
+        assert meta["tags"] == "rest,agent"
+        assert meta["expire_at"] > datetime.now(timezone.utc).timestamp()
+
     def test_knowledge_graph(self, tmp_palace):
         client = self._make_client(tmp_palace)
         resp = client.post("/kg/add", json={

@@ -62,6 +62,8 @@ def create_app(palace_path: str | None = None, wing: str = "global", api_key: st
         room: str = "general"
         metadata: dict[str, Any] | None = None
         source: str = ""
+        ttl: int | None = None
+        tags: list[str] | None = None
 
     class RecallRequest(BaseModel):
         query: str
@@ -135,7 +137,12 @@ def create_app(palace_path: str | None = None, wing: str = "global", api_key: st
     def remember(req: RememberRequest):
         with _write_lock:
             drawer_id = palace.remember(
-                req.content, room=req.room, metadata=req.metadata, source=req.source
+                req.content,
+                room=req.room,
+                metadata=req.metadata,
+                source=req.source,
+                ttl=req.ttl,
+                tags=req.tags,
             )
         return {"drawer_id": drawer_id, "status": "stored"}
 

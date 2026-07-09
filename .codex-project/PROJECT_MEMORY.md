@@ -12,8 +12,9 @@ MemPalace Evolve repository with integrated DreamSeed Code terminal agent. Remot
 - Latest REST lifecycle pass added end-to-end FastAPI coverage for `/lifecycle/purge` and `/lifecycle/compress`, verifying the REST surface reaches the fixed SDK lifecycle paths.
 - Latest MCP/embedding reliability pass extended MCP memory writes with SDK metadata/source/ttl/tags support, exposed lifecycle tools via MCP with write locking, added real FastMCP tool-call tests, made test embeddings deterministic through `MEMPALACE_EMBEDDING_BACKEND=hash`, improved hash fallback recall with lexical features, added metadata fallback for constrained hybrid searches, and tuned default Chroma HNSW metadata for write-heavy memory workloads.
 - Latest adapter parity pass aligned OpenAI and LangChain tool adapters with SDK/MCP memory semantics by forwarding `metadata`, `source`, `ttl`, `tags`, and recall `room` filters through existing tools without increasing tool count.
+- Latest REST typed-parameter parity pass added REST `ttl` and `tags` support for `/remember`, forwarding them through the existing SDK path and verifying persisted `expire_at`/tag metadata.
 - Desktop/Electron installers and old v0.1.1 release artifacts were removed from source. Current release is `dreamseed-code-v0.2.0`.
-- Latest pushed MemPalace code commit before the current in-progress pass: `309598f` (`Improve MCP lifecycle and embedding reliability`).
+- Latest pushed MemPalace code commit before the current in-progress pass: `001b75e` (`Align OpenAI and LangChain memory tools`).
 - Local uncommitted Lite Kernel productization changes are in `bin/dreamseed-lite-kernel.js`: native DreamSeed history management, richer slash commands, MultiEdit, tool progress streaming, MCP Content-Length framing and HTTP JSON-RPC support, segmented compact summaries, skill detail loading, safer shell fallback, and tool change previews.
 - Terminal UI5 changes are now committed, pushed, packaged, and uploaded: polished box-drawing terminal UI, `/` command palette, Up/Down selection, Tab completion, Enter-to-run selected prefix match, right-bounded assistant reply blocks, tool running/done/error rows, approval/info/status blocks, queued MCP notices, Unicode-width-aware Chinese text layout, and scripted-input smoke support.
 - GitHub release `dreamseed-code-v0.2.0` now has assets:
@@ -50,9 +51,17 @@ MemPalace Evolve repository with integrated DreamSeed Code terminal agent. Remot
 - Terminal UI is improved but still the main product-polish track: next refinements could make `/resume` interactive with arrow navigation, improve tool-result collapse/expand, and make approval prompts more like Claude Code/Codex terminal UX.
 
 ## Next Step
-Continue code/system optimization with another focused pass: inspect remaining REST/API typed parameter parity, batch operation surfaces, or terminal-agent runtime polish, then run full tests before any push.
+Continue code/system optimization with another focused pass: inspect batch operation surfaces, import/export metadata parity, or terminal-agent runtime polish, then run full tests before any push.
 
 ## Session Log
+
+### 2026-07-09 17:41
+- User asked: continue sustained optimization toward the repo goal, focusing only on code/system quality and preserving the full-test-before-upload rule.
+- Work completed: researched recent agent-memory framing around governed/auditable memory operations; audited REST `/remember` against SDK/MCP/OpenAI/LangChain typed write parameters; added `ttl` and `tags` to `RememberRequest`; forwarded them to `MemPalace.remember()`; added a REST adapter regression test that writes metadata/source/ttl/tags through HTTP and verifies Chroma metadata contains `priority`, `source_file`, `tags`, and future `expire_at`.
+- Files touched: `src/mempalace_evolve/adapters/rest_api.py`, `tests/test_adapters.py`, `.codex-project/PROJECT_MEMORY.md`; pre-existing `README.md` example change remains unstaged.
+- Verification: targeted `tests/test_adapters.py tests/test_new_features_v2.py tests/test_sdk.py` passed `54 passed, 7 skipped, 1 warning`; full suite passed `646 passed, 7 skipped, 1 warning in 66.79s`; `git diff --check` passed with CRLF warnings only; generated-file scan for adaptive baselines/sqlite artifacts returned no source/test pollution.
+- Result: SDK, MCP, OpenAI, LangChain, and REST write paths now all support metadata/source/ttl/tags, improving cross-entry memory ingestion consistency.
+- Next suggested move: commit and push this REST typed-parameter parity pass, then inspect batch/import/export metadata parity or terminal-agent runtime polish.
 
 ### 2026-07-09 17:24
 - User asked: continue sustained optimization toward the repo goal, focusing only on code/system quality and preserving the full-test-before-upload rule.
