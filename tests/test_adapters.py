@@ -250,6 +250,50 @@ class TestRestAPI:
         assert meta["tags"] == "rest,agent"
         assert meta["expire_at"] > datetime.now(timezone.utc).timestamp()
 
+    def test_batch_remember_endpoint_forwards_metadata(self, tmp_palace):
+        client = self._make_client(tmp_palace)
+        resp = client.post("/remember/batch", json={"memories": [{
+            "content": "REST batch metadata test",
+            "room": "config",
+            "metadata": {"priority": "high"},
+            "source": "rest-batch-source",
+            "ttl": 3600,
+            "tags": ["rest", "batch"],
+        }]})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["stored"] == 1
+
+        from mempalace_evolve.sdk import MemPalace
+        palace = MemPalace(tmp_palace, wing="test_api")
+        col = palace._get_collection()
+        batch = col.get(where={"source_file": "rest-batch-source"}, include=["metadatas"])
+        meta = batch["metadatas"][0]
+        assert meta["priority"] == "high"
+        assert meta["tags"] == "rest,batch"
+        assert meta["expire_at"] > datetime.now(timezone.utc).timestamp()
+
+    def test_batch_recall_endpoint_forwards_room_filter(self, tmp_palace):
+        client = self._make_client(tmp_palace)
+        resp = client.post("/remember/batch", json={"memories": [
+            {"content": "REST batch recall target", "room": "config", "source": "rest-batch-config"},
+            {"content": "REST batch recall target", "room": "decisions", "source": "rest-batch-decision"},
+        ]})
+        assert resp.status_code == 200
+
+        resp = client.post("/recall/batch", json={
+            "queries": ["REST batch recall target"],
+            "room": "config",
+            "limit": 5,
+            "threshold": 1.0,
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data["results"]) == 1
+        memories = data["results"][0]["memories"]
+        assert len(memories) >= 1
+        assert all(m["metadata"].get("room") == "config" for m in memories)
+
     def test_knowledge_graph(self, tmp_palace):
         client = self._make_client(tmp_palace)
         resp = client.post("/kg/add", json={

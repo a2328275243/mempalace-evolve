@@ -128,8 +128,24 @@ def create_app(palace_path: str | None = None, wing: str = "global", api_key: st
     class ConsolidateRequest(BaseModel):
         dry_run: bool = False
 
+    class BatchRememberRequest(BaseModel):
+        memories: list[dict[str, Any]]
+
+    class BatchRecallRequest(BaseModel):
+        queries: list[str]
+        limit: int = 3
+        room: str | None = None
+        threshold: float = 0.8
+
     class BatchForgetRequest(BaseModel):
         drawer_ids: list[str]
+
+    def _as_dict(value):
+        if hasattr(value, "model_dump"):
+            return value.model_dump()
+        if hasattr(value, "dict"):
+            return value.dict()
+        return value
 
     # -- existing endpoints -----------------------------------------------
 
@@ -282,6 +298,24 @@ def create_app(palace_path: str | None = None, wing: str = "global", api_key: st
         with _write_lock:
             result = palace.consolidate(dry_run=req.dry_run)
         return result
+
+    @app.post("/remember/batch")
+    def batch_remember_endpoint(req: BatchRememberRequest):
+        """Store multiple memories in batch."""
+        with _write_lock:
+            result = palace.batch_remember(req.memories)
+        return _as_dict(result)
+
+    @app.post("/recall/batch")
+    def batch_recall_endpoint(req: BatchRecallRequest):
+        """Recall memories for multiple queries in batch."""
+        result = palace.batch_recall(
+            req.queries,
+            limit=req.limit,
+            room=req.room,
+            threshold=req.threshold,
+        )
+        return _as_dict(result)
 
     @app.post("/forget/batch")
     def batch_forget_endpoint(req: BatchForgetRequest):
