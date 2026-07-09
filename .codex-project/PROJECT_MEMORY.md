@@ -247,4 +247,5 @@ Continue code/system optimization with another focused pass: inspect OpenAI/Lang
 - Next suggested move: run a true clean-user install on another Windows machine using the GitHub release zip.
 
 ## History Compression
+- 2026-07-10: Continued CI hardening after pushed commits `7fbb329`, `df5ec09`, and `6f94d0d`. GitHub Actions showed `Tests` green and `CI` failing only on `windows-latest` Python 3.12 during coverage tests; Ubuntu/macOS jobs and lint passed. Reproduced with repo-local uv Python 3.12 under `.uv_python` and `.venv312`; full Windows Python 3.12 suite passed locally (`655 passed, 9 skipped`), benchmark-only suite passed (`6 passed`), and the proposed Windows CI command with `--ignore=tests/benchmarks` passed (`649 passed, 9 skipped`). Updated CI to run all tests on Linux/macOS while excluding benchmark tests only on Windows runners, and ignored local uv/venv/coverage artifacts.
 - 2026-06-20: Integrated DreamSeed Code Lite Kernel terminal agent into the MemPalace Evolve repo, removed old desktop installer artifacts, pushed commit `f2481e5`, created release `dreamseed-code-v0.2.0` with `dreamseed-code-0.2.0-source.zip`.

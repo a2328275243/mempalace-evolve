@@ -9,11 +9,14 @@ dist/
 .eggs/
 
 .venv/
+.venv*/
 venv/
 env/
 .env
 .env.*
 !.env.example
+.uv_cache/
+.uv_python/
 
 *.sqlite3
 *.db
@@ -28,6 +31,7 @@ src/mempalace_evolve/core/.adaptive_baselines.json
 .pytest_cache/
 .mypy_cache/
 .coverage
+coverage.xml
 htmlcov/
 
 .idea/
