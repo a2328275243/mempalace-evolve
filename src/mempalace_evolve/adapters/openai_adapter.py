@@ -48,6 +48,14 @@ class OpenAIAdapter(AgentAdapter):
                         "properties": {
                             "content": {"type": "string", "description": "What to remember"},
                             "room": {"type": "string", "description": "Category: decisions, errors, config, progress"},
+                            "metadata": {"type": "object", "description": "Optional metadata fields"},
+                            "source": {"type": "string", "description": "Optional source identifier"},
+                            "ttl": {"type": "integer", "description": "Optional time-to-live in seconds"},
+                            "tags": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Optional labels for filtering or access control",
+                            },
                         },
                         "required": ["content"],
                     },
@@ -63,6 +71,7 @@ class OpenAIAdapter(AgentAdapter):
                         "properties": {
                             "query": {"type": "string", "description": "What to search for"},
                             "limit": {"type": "integer", "description": "Max results", "default": 5},
+                            "room": {"type": "string", "description": "Optional room/category filter"},
                         },
                         "required": ["query"],
                     },
@@ -90,13 +99,20 @@ class OpenAIAdapter(AgentAdapter):
         """Handle a tool call from OpenAI and return the result as string."""
         if name == "mempalace_remember":
             drawer_id = self.palace.remember(
-                arguments["content"], room=arguments.get("room", "general")
+                arguments["content"],
+                room=arguments.get("room", "general"),
+                metadata=arguments.get("metadata"),
+                source=arguments.get("source", ""),
+                ttl=arguments.get("ttl"),
+                tags=arguments.get("tags"),
             )
             return json.dumps({"stored": True, "id": drawer_id})
 
         elif name == "mempalace_recall":
             results = self.palace.recall(
-                arguments["query"], limit=arguments.get("limit", 5)
+                arguments["query"],
+                limit=arguments.get("limit", 5),
+                room=arguments.get("room"),
             )
             return json.dumps({"results": results}, ensure_ascii=False)
 

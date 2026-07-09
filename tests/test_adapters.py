@@ -18,6 +18,10 @@ class TestOpenAIAdapter:
         assert "mempalace_remember" in names
         assert "mempalace_recall" in names
         assert "mempalace_add_fact" in names
+        remember_schema = tools[names.index("mempalace_remember")]["function"]["parameters"]["properties"]
+        recall_schema = tools[names.index("mempalace_recall")]["function"]["parameters"]["properties"]
+        assert {"metadata", "source", "ttl", "tags"}.issubset(remember_schema)
+        assert "room" in recall_schema
 
     def test_handle_remember(self, palace):
         from mempalace_evolve.adapters.openai_adapter import OpenAIAdapter
@@ -29,6 +33,27 @@ class TestOpenAIAdapter:
         data = json.loads(result)
         assert data["stored"] is True
 
+    def test_handle_remember_forwards_sdk_metadata(self, palace):
+        from mempalace_evolve.adapters.openai_adapter import OpenAIAdapter
+        adapter = OpenAIAdapter(palace)
+        result = adapter.handle_tool_call("mempalace_remember", {
+            "content": "OpenAI adapter metadata test",
+            "room": "config",
+            "metadata": {"priority": "high"},
+            "source": "openai-test-source",
+            "ttl": 3600,
+            "tags": ["openai", "agent"],
+        })
+        data = json.loads(result)
+
+        col = palace._get_collection()
+        batch = col.get(ids=[data["id"]], include=["metadatas"])
+        meta = batch["metadatas"][0]
+        assert meta["priority"] == "high"
+        assert meta["source_file"] == "openai-test-source"
+        assert meta["tags"] == "openai,agent"
+        assert meta["expire_at"] > datetime.now(timezone.utc).timestamp()
+
     def test_handle_recall(self, palace):
         from mempalace_evolve.adapters.openai_adapter import OpenAIAdapter
         palace.remember("Database uses PostgreSQL 15", room="config")
@@ -36,6 +61,20 @@ class TestOpenAIAdapter:
         result = adapter.handle_tool_call("mempalace_recall", {"query": "database"})
         data = json.loads(result)
         assert len(data["results"]) >= 1
+
+    def test_handle_recall_forwards_room_filter(self, palace):
+        from mempalace_evolve.adapters.openai_adapter import OpenAIAdapter
+        palace.remember("Adapter room filter target", room="config")
+        palace.remember("Adapter room filter target", room="decisions", source="other-room")
+        adapter = OpenAIAdapter(palace)
+        result = adapter.handle_tool_call("mempalace_recall", {
+            "query": "Adapter room filter target",
+            "room": "config",
+            "limit": 5,
+        })
+        data = json.loads(result)
+        assert len(data["results"]) >= 1
+        assert all(r["metadata"].get("room") == "config" for r in data["results"])
 
     def test_handle_add_fact(self, palace):
         from mempalace_evolve.adapters.openai_adapter import OpenAIAdapter
@@ -79,6 +118,54 @@ class TestBaseAdapter:
         assert did
         results = adapter.recall("Test via adapter")
         assert len(results) >= 1
+
+
+class TestLangChainAdapter:
+    @pytest.fixture(autouse=True)
+    def _check_langchain(self):
+        try:
+            import langchain_core  # noqa: F401
+        except ImportError:
+            pytest.skip("langchain-core not available")
+
+    def _tools_by_name(self, palace):
+        from mempalace_evolve.adapters.langchain_adapter import LangChainAdapter
+
+        adapter = LangChainAdapter(palace)
+        return {tool.name: tool for tool in adapter.get_tools()}
+
+    def test_langchain_remember_forwards_sdk_metadata(self, palace):
+        tools = self._tools_by_name(palace)
+        result = tools["mempalace_remember"].invoke({
+            "content": "LangChain adapter metadata test",
+            "room": "config",
+            "metadata": {"priority": "high"},
+            "source": "langchain-test-source",
+            "ttl": 3600,
+            "tags": ["langchain", "agent"],
+        })
+        data = json.loads(result)
+
+        col = palace._get_collection()
+        batch = col.get(ids=[data["id"]], include=["metadatas"])
+        meta = batch["metadatas"][0]
+        assert meta["priority"] == "high"
+        assert meta["source_file"] == "langchain-test-source"
+        assert meta["tags"] == "langchain,agent"
+        assert meta["expire_at"] > datetime.now(timezone.utc).timestamp()
+
+    def test_langchain_recall_forwards_room_filter(self, palace):
+        palace.remember("LangChain room filter target", room="config")
+        palace.remember("LangChain room filter target", room="decisions", source="other-room")
+        tools = self._tools_by_name(palace)
+        result = tools["mempalace_recall"].invoke({
+            "query": "LangChain room filter target",
+            "room": "config",
+            "limit": 5,
+        })
+        data = json.loads(result)
+        assert len(data["results"]) >= 1
+        assert all(r["room"] == "config" for r in data["results"])
 
 
 class TestRestAPI:

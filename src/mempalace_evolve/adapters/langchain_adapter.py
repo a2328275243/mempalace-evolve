@@ -59,21 +59,41 @@ class LangChainAdapter(AgentAdapter):
                 description="Category: decisions, errors, config, architecture, general",
             )
 
+            metadata: dict[str, Any] | None = Field(default=None, description="Optional metadata fields")
+            source: str = Field(default="", description="Optional source identifier")
+            ttl: int | None = Field(default=None, description="Optional time-to-live in seconds")
+            tags: list[str] | None = Field(default=None, description="Optional labels for filtering or access control")
+
         class RecallInput(BaseModel):
             query: str = Field(description="Natural language search query")
             limit: int = Field(default=5, description="Max results to return")
+            room: str | None = Field(default=None, description="Optional room/category filter")
 
         class AddFactInput(BaseModel):
             subject: str = Field(description="Entity name (e.g. 'project', 'auth_module')")
             predicate: str = Field(description="Relationship (e.g. 'uses', 'depends_on')")
             object: str = Field(description="Target entity (e.g. 'FastAPI', 'database')")
 
-        def _remember(content: str, room: str = "general") -> str:
-            drawer_id = self.palace.remember(content, room=room)
+        def _remember(
+            content: str,
+            room: str = "general",
+            metadata: dict[str, Any] | None = None,
+            source: str = "",
+            ttl: int | None = None,
+            tags: list[str] | None = None,
+        ) -> str:
+            drawer_id = self.palace.remember(
+                content,
+                room=room,
+                metadata=metadata,
+                source=source,
+                ttl=ttl,
+                tags=tags,
+            )
             return json.dumps({"stored": True, "id": drawer_id})
 
-        def _recall(query: str, limit: int = 5) -> str:
-            results = self.palace.recall(query, limit=limit)
+        def _recall(query: str, limit: int = 5, room: str | None = None) -> str:
+            results = self.palace.recall(query, limit=limit, room=room)
             return json.dumps(
                 {"results": [{"content": r["content"], "room": r.get("metadata", {}).get("room", "")} for r in results]},
                 ensure_ascii=False,
