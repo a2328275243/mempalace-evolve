@@ -3,6 +3,7 @@
 import json
 import tempfile
 from pathlib import Path
+from datetime import datetime, timezone
 
 import pytest
 
@@ -163,6 +164,40 @@ class TestExportImportRoundtrip:
         items = [{"content": "List import A", "room": "general"}, {"content": "List import B", "room": "general"}]
         result = palace.import_memories(items)
         assert result["added"] >= 2
+
+    def test_import_memories_preserves_metadata_fields(self, palace):
+        result = palace.import_memories([{
+            "content": "Imported metadata parity memory",
+            "room": "config",
+            "metadata": {"priority": "high"},
+            "source": "import-source",
+            "ttl": 3600,
+            "tags": ["imported", "parity"],
+        }])
+        assert result["added"] == 1
+
+        col = palace._get_collection()
+        batch = col.get(where={"source_file": "import-source"}, include=["metadatas"])
+        meta = batch["metadatas"][0]
+        assert meta["priority"] == "high"
+        assert meta["source_file"] == "import-source"
+        assert meta["tags"] == "imported,parity"
+        assert meta["expire_at"] > datetime.now(timezone.utc).timestamp()
+
+    def test_import_memories_uses_export_source_file(self, palace):
+        result = palace.import_memories([{
+            "content": "Imported source_file parity memory",
+            "room": "config",
+            "source_file": "exported-source",
+            "metadata": {"origin": "export"},
+        }])
+        assert result["added"] == 1
+
+        col = palace._get_collection()
+        batch = col.get(where={"source_file": "exported-source"}, include=["metadatas"])
+        meta = batch["metadatas"][0]
+        assert meta["source_file"] == "exported-source"
+        assert meta["origin"] == "export"
 
     def test_import_memories_returns_stats(self, palace):
         result = palace.import_memories([{"content": "Stats test import", "room": "general"}])

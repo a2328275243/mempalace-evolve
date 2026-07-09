@@ -689,7 +689,8 @@ class MemPalace:
         Args:
             source: Path to a JSON file, or a list of memory dicts.
                 Each dict should have: {"content": str, "room": str}
-                Optional fields: "metadata", "wing" (defaults to current wing).
+                Optional fields: "metadata", "source", "ttl", "tags",
+                "wing" (defaults to current wing).
 
         Returns:
             {"imported": int, "skipped": int, "errors": list}
@@ -719,8 +720,18 @@ class MemPalace:
                 continue
             room = item.get("room", "general")
             metadata = item.get("metadata")
+            source_file = str(item.get("source") or item.get("source_file") or "")
+            ttl = item.get("ttl")
+            tags = item.get("tags")
             try:
-                self.remember(content, room=room, metadata=metadata)
+                self.remember(
+                    content,
+                    room=room,
+                    metadata=metadata,
+                    source=source_file,
+                    ttl=ttl,
+                    tags=tags,
+                )
                 imported += 1
             except Exception as e:
                 errors.append({"content": content[:50], "error": str(e)})
