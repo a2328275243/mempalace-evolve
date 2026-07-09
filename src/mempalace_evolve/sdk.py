@@ -981,10 +981,7 @@ class MemPalace:
         if not collection:
             return {"purged": 0, "purged_ids": []}
         expired = find_ttl_expired(collection, ttl_days=ttl_days, ttl_summary_days=ttl_summary_days, wing=self._wing)
-        ids = []
-        for item_list in expired.values():
-            if isinstance(item_list, list):
-                ids.extend(item.get("id", "") for item in item_list if isinstance(item, dict))
+        ids = [item.get("id", "") for item in expired if isinstance(item, dict)]
         if not ids:
             return {"purged": 0, "purged_ids": []}
         result = _pe(collection, ids)
@@ -1000,10 +997,16 @@ class MemPalace:
         candidates = find_compress_candidates(collection, compress_after_days=compress_after_days)
         if not candidates:
             return {"candidates": 0, "compressed": 0}
-        if self._chroma is None:
-            return {"candidates": sum(len(v) for v in candidates.values()), "compressed": 0}
-        archive_col = self._chroma._client.get_or_create_collection(name="mempalace_archive", metadata={"hnsw:space": "cosine"})
-        result = compress_candidates(collection, candidates, archive_col, max_chars=max_chars)
+        import chromadb
+        from mempalace_evolve.core.embeddings import get_cached_ef
+
+        client = chromadb.PersistentClient(path=str(self._path / "palace"))
+        archive_col = client.get_or_create_collection(
+            name="mempalace_archive",
+            metadata={"hnsw:space": "cosine"},
+            embedding_function=get_cached_ef(),
+        )
+        result = compress_candidates(collection, candidates, archive_col, max_summary_chars=max_chars)
         return result
 
     def consolidate(self, dry_run: bool = False) -> dict:

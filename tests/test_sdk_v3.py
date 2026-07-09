@@ -1,6 +1,7 @@
 """Tests for previously untested SDK public methods."""
 
 import pytest
+from datetime import datetime, timedelta, timezone
 
 
 class TestReviewCycle:
@@ -82,3 +83,42 @@ class TestProperties:
     def test_wing_returns_string(self, palace):
         w = palace.wing
         assert isinstance(w, str)
+
+
+class TestLifecycleMethods:
+    def test_purge_expired_removes_only_expired_current_wing_memory(self, palace):
+        did = palace.remember("Temporary low-importance memory", room="general")
+        col = palace._get_collection()
+        batch = col.get(ids=[did], include=["documents", "metadatas"])
+        meta = batch["metadatas"][0]
+        doc = batch["documents"][0]
+        old = (datetime.now(timezone.utc) - timedelta(days=3)).isoformat()
+        meta["last_accessed"] = old
+        meta["enhanced_importance"] = 0.0
+        col.update(ids=[did], documents=[doc], metadatas=[meta])
+
+        result = palace.purge_expired(ttl_days=1)
+
+        assert result["purged"] == 1
+        assert did in result["purged_ids"]
+        remaining = col.get(ids=[did], include=[])
+        assert remaining["ids"] == []
+
+    def test_compress_old_memories_uses_lifecycle_summary_limit(self, palace):
+        palace._scoring_config["dedup_threshold"] = 0
+        ids = [
+            palace.remember("Old lifecycle compression item one. Extra detail.", room="archive_test"),
+            palace.remember("Old lifecycle compression item two. Extra detail.", room="archive_test"),
+        ]
+        col = palace._get_collection()
+        old = (datetime.now(timezone.utc) - timedelta(days=3)).isoformat()
+        batch = col.get(ids=ids, include=["documents", "metadatas"])
+        for doc_id, doc, meta in zip(batch["ids"], batch["documents"], batch["metadatas"]):
+            meta["last_accessed"] = old
+            col.update(ids=[doc_id], documents=[doc], metadatas=[meta])
+
+        result = palace.compress_old_memories(compress_after_days=1, max_chars=120)
+
+        assert result["rooms_compressed"] >= 1
+        assert result["drawers_archived"] >= 2
+        assert result["summaries_created"] >= 1

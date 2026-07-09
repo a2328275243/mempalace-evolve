@@ -7,6 +7,7 @@ MemPalace Evolve repository with integrated DreamSeed Code terminal agent. Remot
 - Repository contains both MemPalace Evolve Python package (`src/mempalace_evolve/`) and DreamSeed Code terminal agent (`bin/dreamseed-agent.js`, `bin/dreamseed-lite-kernel.js`).
 - Latest code-quality pass focused on MemPalace core reliability/performance rather than community/docs work: safer consolidation dedup bucketing, multilingual overlap dedup, Chroma delete loop progress guards, faster SDK `remember()` hot path, test isolation for global Chroma paths, and dev extras that can run MCP tests.
 - Latest follow-up moved adaptive scorer learned baselines out of package source into runtime state under `MEMPALACE_ROOT` or `MEMPALACE_ADAPTIVE_BASELINES_PATH`, preventing full tests and normal use from dirtying `src/mempalace_evolve/core/.adaptive_baselines.json`.
+- Latest SDK lifecycle pass fixed public `compress_old_memories()` and `purge_expired()` entry points: archive collections now use a public `chromadb.PersistentClient`, compression passes `max_summary_chars` correctly, TTL expiry supports wing filtering, and SDK tests cover both flows.
 - Desktop/Electron installers and old v0.1.1 release artifacts were removed from source. Current release is `dreamseed-code-v0.2.0`.
 - Latest pushed commit: `0332abd` (`fix full kit privacy scan on Windows`), with prior UI commit `e74ce14` (`improve lite kernel terminal ui`).
 - Local uncommitted Lite Kernel productization changes are in `bin/dreamseed-lite-kernel.js`: native DreamSeed history management, richer slash commands, MultiEdit, tool progress streaming, MCP Content-Length framing and HTTP JSON-RPC support, segmented compact summaries, skill detail loading, safer shell fallback, and tool change previews.
@@ -45,9 +46,17 @@ MemPalace Evolve repository with integrated DreamSeed Code terminal agent. Remot
 - Terminal UI is improved but still the main product-polish track: next refinements could make `/resume` interactive with arrow navigation, improve tool-result collapse/expand, and make approval prompts more like Claude Code/Codex terminal UX.
 
 ## Next Step
-Continue code/system optimization with another focused pass: inspect memory lifecycle/consolidation encoding and API ergonomics, then run full tests before any push.
+Continue code/system optimization with another focused pass: inspect remaining SDK/API lifecycle edge cases and terminal-agent runtime polish, then run full tests before any push.
 
 ## Session Log
+
+### 2026-07-09 12:44
+- User asked: continue sustained optimization toward the repo goal, focusing on code/system quality and preserving the full-test-before-upload rule.
+- Work completed: researched current agent memory guidance around write-manage-read loops, consolidation gating, and preserving raw episodes; found broken SDK lifecycle public methods; fixed `find_ttl_expired()` to accept optional `wing` filtering; fixed sync and async `purge_expired()` to consume the actual expired-item list; fixed sync and async `compress_old_memories()` to pass `max_summary_chars`; replaced fragile `self._chroma._client` archive access with public `chromadb.PersistentClient(path=...)` plus the project embedding function; added SDK regression tests for TTL purge and lifecycle compression.
+- Files touched: `src/mempalace_evolve/sdk.py`, `src/mempalace_evolve/async_sdk.py`, `src/mempalace_evolve/core/lifecycle.py`, `tests/test_sdk_v3.py`, `.codex-project/PROJECT_MEMORY.md`; pre-existing `README.md` change remains unstaged.
+- Verification: targeted `tests/test_lifecycle.py tests/test_sdk_v3.py tests/test_async_sdk.py` passed 75/75; full suite passed `637 passed, 4 skipped, 1 warning in 80.66s`; `git diff --check` passed with CRLF warnings only; generated-file scan for adaptive baselines/sqlite artifacts returned no source/test pollution.
+- Result: SDK lifecycle compression and TTL purge are now executable through public APIs and scoped to the current wing, improving the memory manage phase without changing README/contest template.
+- Next suggested move: commit and push this lifecycle SDK fix, then continue with another code/system audit pass.
 
 ### 2026-07-09 12:34
 - User asked: continue the sustained optimization goal, focusing on code/system quality only and keeping full-test-before-upload discipline.

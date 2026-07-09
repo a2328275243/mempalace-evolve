@@ -386,7 +386,8 @@ def migrate_legacy_drawers(collection) -> dict:
 
 def find_ttl_expired(collection, ttl_days: int = 90, ttl_summary_days: int = 180,
                      min_importance: float = 0.25,
-                     protected_rooms: list = None) -> list:
+                     protected_rooms: list = None,
+                     wing: str | None = None) -> list:
     """找到满足 TTL 过期条件的 drawers。
 
     条件：last_accessed 超过 ttl_days 且 importance < min_importance。
@@ -414,6 +415,8 @@ def find_ttl_expired(collection, ttl_days: int = 90, ttl_summary_days: int = 180
 
         for i, doc_id in enumerate(batch["ids"]):
             meta = batch["metadatas"][i]
+            if wing is not None and meta.get("wing") != wing:
+                continue
             room = meta.get("room", "general")
 
             if room in protected_rooms:
