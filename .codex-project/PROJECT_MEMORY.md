@@ -18,6 +18,7 @@ MemPalace Evolve repository with integrated DreamSeed Code terminal agent. Remot
 - Latest REST batch parity pass added `/remember/batch` and `/recall/batch`, forwarding to the typed SDK batch methods and verifying batch metadata/TTL/tag persistence plus room-filtered batch recall.
 - Latest MCP/async batch parity pass added MCP `batch_remember`, `batch_recall`, and `batch_forget` tools, and fixed AsyncMemPalace batch/recall wrappers so threshold/hybrid parameters align with the sync SDK without passing unsupported keywords.
 - Latest CI hardening pass made the full `src/` tree pass the repository's GitHub Actions ruff check and ruff format gates, then verified the package with coverage tests, doctor/import smoke checks, build, and twine metadata validation.
+- Latest post-push CI follow-up found GitHub Actions `Tests` failed only on Python 3.10 after `7fbb329`; fixed the likely 3.10 import incompatibility by using a `typing_extensions.Self` fallback and declaring `typing-extensions` for Python <3.11.
 - Desktop/Electron installers and old v0.1.1 release artifacts were removed from source. Current release is `dreamseed-code-v0.2.0`.
 - Latest pushed MemPalace code commit before the current in-progress pass: `2c7bb85` (`Add REST batch memory endpoints`).
 - Local uncommitted Lite Kernel productization changes are in `bin/dreamseed-lite-kernel.js`: native DreamSeed history management, richer slash commands, MultiEdit, tool progress streaming, MCP Content-Length framing and HTTP JSON-RPC support, segmented compact summaries, skill detail loading, safer shell fallback, and tool change previews.
@@ -59,6 +60,14 @@ MemPalace Evolve repository with integrated DreamSeed Code terminal agent. Remot
 Continue code/system optimization with another focused pass: inspect OpenAI/LangChain batch parity tradeoffs, typed model coverage, or terminal-agent runtime polish; before uploading, rerun the GitHub Actions-equivalent lint, format, full coverage tests, doctor/import smoke, build, and twine checks.
 
 ## Session Log
+
+### 2026-07-10 10:43
+- User asked: continue, and be more careful because GitHub Actions had previously found pushed code did not run.
+- Work completed: after pushing `7fbb329`, checked GitHub Actions; `Tests` failed on the Python 3.10 job while lint and Python 3.11 tests passed and Python 3.12 tests passed before cancellation; local logs were not downloadable due GitHub 403 admin-rights restriction, so audited 3.10-only syntax/import risks; found `typing.Self` in `sdk.py`, which is Python 3.11+; replaced it with a Python 3.10-compatible `typing_extensions.Self` fallback and added `typing-extensions>=4.0; python_version < '3.11'` to package dependencies.
+- Files touched: `src/mempalace_evolve/sdk.py`, `pyproject.toml`, `.codex-project/PROJECT_MEMORY.md`; pre-existing `README.md` example change remains unstaged.
+- Verification: targeted `tests/test_sdk.py tests/test_sdk_v3.py tests/test_async_sdk.py` passed `60 passed`; `ruff check src/` passed; `ruff format --check src/` passed; full suite passed `655 passed, 9 skipped, 1 warning`; GitHub Actions-equivalent coverage run passed `655 passed, 9 skipped, 1 warning`; import smoke passed for package and SDK; `python -m mempalace_evolve.cli doctor` passed `4/4`; package build passed with local `--no-isolation`; `twine check dist/*` passed.
+- Result: Python 3.10 no longer imports `typing.Self` directly, addressing the only observed failed Actions matrix job.
+- Next suggested move: commit and push the Python 3.10 compatibility hotfix, then re-check GitHub Actions status for the new head commit.
 
 ### 2026-07-10 10:28
 - User asked: continue sustained optimization toward the repo goal, focusing only on code/system quality and preserving the full-test-before-upload rule.

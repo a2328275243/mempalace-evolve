@@ -15,7 +15,13 @@ import logging
 import math
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Self
+from typing import Any
+
+try:
+    from typing import Self
+except ImportError:  # Python 3.10 compatibility
+    from typing_extensions import Self
+
 from mempalace_evolve.advanced_query import AdvancedQuery
 from mempalace_evolve.models import (
     BatchRememberResult,
