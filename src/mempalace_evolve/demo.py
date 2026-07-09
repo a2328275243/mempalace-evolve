@@ -1,10 +1,19 @@
 """mempalace demo — one-command showcase of all features."""
+
 import tempfile
 import shutil
-import time
 
 from mempalace_evolve.terminal import (
-    banner, step, bullet, dim, green, yellow, cyan, bold, divider, magenta,
+    banner,
+    step,
+    bullet,
+    dim,
+    green,
+    yellow,
+    cyan,
+    bold,
+    divider,
+    magenta,
 )
 
 
@@ -32,12 +41,15 @@ def _run(palace_path: str) -> None:
     print(step(1, "存储记忆 (Store Memories)"))
     memories = [
         ("Decided to use FastAPI with PostgreSQL for the API layer", "decisions"),
-        ("CORS blocked requests from localhost:3000 — fixed by adding Allow-Origin middleware", "errors"),
+        (
+            "CORS blocked requests from localhost:3000 — fixed by adding Allow-Origin middleware",
+            "errors",
+        ),
         ("Redis cache layer with 30-minute TTL for session data", "config"),
         ("Microservices architecture with RabbitMQ event-driven communication", "architecture"),
     ]
     for content, room in memories:
-        did = palace.remember(content, room=room)
+        palace.remember(content, room=room)
         print(bullet(f"[{room}] {content[:60]}"))
     print(dim(f"      → 已存储 {len(memories)} 条记忆"))
 

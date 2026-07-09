@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import hashlib
 import logging
-import sys
 import threading
 import time as _time
 from datetime import datetime, timezone
@@ -17,7 +16,7 @@ from typing import Any
 
 import chromadb
 
-from mempalace_evolve.core.config import get_config, COLLECTION_NAME, GLOBAL_CHROMA
+from mempalace_evolve.core.config import COLLECTION_NAME, GLOBAL_CHROMA
 from mempalace_evolve.core.embeddings import get_cached_ef
 
 logger = logging.getLogger("mempalace.chroma")
@@ -36,6 +35,7 @@ _client_cache: dict[str, chromadb.PersistentClient] = {}
 _collection_cache: dict[str, chromadb.Collection] = {}
 _last_health_check: dict[str, float] = {}
 _HEALTH_CHECK_INTERVAL = 60  # seconds
+
 
 def get_collection(palace_path: str = None, create: bool = True) -> chromadb.Collection | None:
     """Get or create a ChromaDB collection (cached, thread-safe).
@@ -91,6 +91,7 @@ def get_collection(palace_path: str = None, create: bool = True) -> chromadb.Col
         _collection_cache[cache_key] = col
         _last_health_check[cache_key] = now
     return col
+
 
 def add_drawer(
     collection,
@@ -157,6 +158,7 @@ def add_drawer(
         logger.warning("add_drawer failed: %s", e)
         return False
 
+
 def batch_add_drawers(collection, drawers: list[dict]) -> tuple[int, int]:
     """Bulk-add drawers with a single ChromaDB call per chunk.
 
@@ -215,9 +217,11 @@ def batch_add_drawers(collection, drawers: list[dict]) -> tuple[int, int]:
         except Exception:
             existing_ids = set()
         if existing_ids:
-            filtered = [(cid, cdoc, cmeta) for cid, cdoc, cmeta
-                        in zip(chunk_ids, chunk_docs, chunk_metas)
-                        if cid not in existing_ids]
+            filtered = [
+                (cid, cdoc, cmeta)
+                for cid, cdoc, cmeta in zip(chunk_ids, chunk_docs, chunk_metas)
+                if cid not in existing_ids
+            ]
             if not filtered:
                 skipped += len(chunk_ids)
                 continue
@@ -239,6 +243,7 @@ def batch_add_drawers(collection, drawers: list[dict]) -> tuple[int, int]:
                 skipped += len(chunk_ids)
     return (added, skipped)
 
+
 def delete_file_drawers(collection, source_file: str) -> int:
     """Delete all drawers from a specific source file.
 
@@ -253,6 +258,7 @@ def delete_file_drawers(collection, source_file: str) -> int:
         return len(ids)
     except Exception:
         return 0
+
 
 def delete_by_wing(collection, wing: str) -> int:
     """Delete all drawers for a given wing (batched to avoid large-memory fetches).
@@ -279,6 +285,7 @@ def delete_by_wing(collection, wing: str) -> int:
         pass
     return deleted
 
+
 def delete_by_room(collection, wing: str, room: str) -> int:
     """Delete all drawers matching a specific wing + room (batched to avoid large-memory fetches).
 
@@ -289,7 +296,9 @@ def delete_by_room(collection, wing: str, room: str) -> int:
     seen_ids: set[str] = set()
     try:
         while True:
-            results = collection.get(where={"$and": [{"wing": wing}, {"room": room}]}, limit=500, include=[])
+            results = collection.get(
+                where={"$and": [{"wing": wing}, {"room": room}]}, limit=500, include=[]
+            )
             ids = results["ids"] if results else []
             if not ids:
                 break
@@ -303,6 +312,7 @@ def delete_by_room(collection, wing: str, room: str) -> int:
     except Exception:
         pass
     return deleted
+
 
 def get_all_metadata(collection, batch_size: int = 1000) -> list[dict]:
     """Fetch all document metadata from the collection (batched).
@@ -321,17 +331,20 @@ def get_all_metadata(collection, batch_size: int = 1000) -> list[dict]:
                 offset=offset,
             )
             for i, doc_id in enumerate(results["ids"]):
-                all_items.append({
-                    "id": doc_id,
-                    "metadata": results["metadatas"][i] if results["metadatas"] else {},
-                    "document": results["documents"][i] if results["documents"] else "",
-                })
+                all_items.append(
+                    {
+                        "id": doc_id,
+                        "metadata": results["metadatas"][i] if results["metadatas"] else {},
+                        "document": results["documents"][i] if results["documents"] else "",
+                    }
+                )
             if len(results["ids"]) < batch_size:
                 break
             offset += len(results["ids"])
     except Exception as e:
         logger.warning("get_all_metadata failed: %s", e)
     return all_items
+
 
 def get_pool_stats() -> dict:
     """Return connection pool statistics for monitoring."""
@@ -342,11 +355,13 @@ def get_pool_stats() -> dict:
             "health_checks": len(_last_health_check),
         }
 
+
 def _make_drawer_id(wing: str, room: str, source_file: str, chunk_index: int) -> str:
     """Generate a deterministic drawer ID."""
     raw = f"{source_file}:{chunk_index}"
     hash_part = hashlib.md5(raw.encode()).hexdigest()[:16]
     return f"drawer_{wing}_{room}_{hash_part}"
+
 
 def file_already_mined(collection: Any, source_file: str) -> bool:
     """Check if a file has already been mined (any drawers exist)."""
@@ -377,7 +392,12 @@ def _repair_collection(palace_path: str) -> chromadb.Collection | None:
         ef = get_cached_ef()
         return client.get_or_create_collection(
             name=COLLECTION_NAME,
-            metadata={"hnsw:space": "cosine", "hnsw:construction_ef": 200, "hnsw:M": 32, "hnsw:search_ef": 200},
+            metadata={
+                "hnsw:space": "cosine",
+                "hnsw:construction_ef": 200,
+                "hnsw:M": 32,
+                "hnsw:search_ef": 200,
+            },
             embedding_function=ef,
         )
     except Exception as e:

@@ -9,7 +9,10 @@ f_gap: 区分度（top-1 和 top-2 之间的差距）
 适配自 M-flow 的 adaptive_scoring.py，简化为单 collection 场景。
 """
 
-import math
+import json
+import logging
+import os
+from pathlib import Path
 
 
 def compute_confidence(distances: list) -> dict:
@@ -118,11 +121,6 @@ def adjust_scores(results: list, confidence: dict) -> list:
 # Per-Wing 自适应基线（适配自 M-flow 的 per-collection baselines）
 # ---------------------------------------------------------------------------
 
-import json
-import logging
-import os
-from pathlib import Path
-
 logger = logging.getLogger("mempalace.adaptive_scorer")
 
 _BASELINES_ENV = "MEMPALACE_ADAPTIVE_BASELINES_PATH"
@@ -182,6 +180,7 @@ def _save_baselines(baselines: dict):
     baselines_path = get_baselines_path()
     try:
         from mempalace_evolve.core.config import atomic_write_json
+
         baselines_path.parent.mkdir(parents=True, exist_ok=True)
         atomic_write_json(baselines_path, baselines, ensure_ascii=False, indent=2)
         _baselines_cache = baselines

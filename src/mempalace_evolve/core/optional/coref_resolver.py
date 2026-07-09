@@ -47,8 +47,6 @@ def resolve_query(query: str, context: Optional[dict] = None) -> str:
     if not query:
         return query
 
-    words = query.lower().split()
-
     # For now, just return the original query
     # A full implementation would track entities from the codebase
     # and resolve pronouns to actual entity names

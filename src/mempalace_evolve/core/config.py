@@ -7,7 +7,6 @@ MemPalace 统一配置模块
 import json
 import logging
 import os
-import sys
 from pathlib import Path
 
 logger = logging.getLogger("mempalace.config")
@@ -26,7 +25,9 @@ def atomic_write(path: Path, content: str, encoding: str = "utf-8"):
         tmp.write_text(content, encoding=encoding)
         tmp.replace(path)
     except Exception:
-        logger.debug("atomic rename failed for %s, falling back to direct write", path, exc_info=True)
+        logger.debug(
+            "atomic rename failed for %s, falling back to direct write", path, exc_info=True
+        )
         try:
             tmp.unlink(missing_ok=True)
         except Exception:
@@ -44,6 +45,7 @@ def atomic_write_json(path: Path, data, ensure_ascii: bool = False, indent: int 
         indent: 缩进空格数
     """
     atomic_write(path, json.dumps(data, ensure_ascii=ensure_ascii, indent=indent))
+
 
 # ---------------------------------------------------------------------------
 # 路径常量
@@ -77,7 +79,7 @@ def _yaml_safe_load(text: str) -> dict:
         for ch in stripped:
             if ch in ('"', "'"):
                 in_quote = not in_quote
-            if ch == '#' and not in_quote:
+            if ch == "#" and not in_quote:
                 break
             clean.append(ch)
         clean_text = "".join(clean).rstrip()
@@ -239,12 +241,14 @@ class UserConfig:
                     if not any(p.get("path") == proj_path for p in projects):
                         palace = str(Path(proj_path) / ".mempalace")
                         if Path(palace).exists():
-                            projects.append({
-                                "name": Path(proj_path).name,
-                                "path": proj_path,
-                                "palace_path": palace,
-                                "type": "other",
-                            })
+                            projects.append(
+                                {
+                                    "name": Path(proj_path).name,
+                                    "path": proj_path,
+                                    "palace_path": palace,
+                                    "type": "other",
+                                }
+                            )
 
         self._projects_cache = projects
         return projects
@@ -345,6 +349,7 @@ class UserConfig:
         # 尝试 pyyaml
         try:
             import yaml
+
             data = yaml.safe_load(text)
             if isinstance(data, dict):
                 self._yaml_cache[path_str] = data
@@ -387,11 +392,13 @@ class UserConfig:
         # 全局 palace
         for md in self._config_dir.glob("*.md"):
             if md.name not in ("README.md",):
-                files.append({
-                    "path": str(md),
-                    "wing": "global",
-                    "name": md.name,
-                })
+                files.append(
+                    {
+                        "path": str(md),
+                        "wing": "global",
+                        "name": md.name,
+                    }
+                )
 
         # 项目级
         for p in self.get_projects():
@@ -400,11 +407,13 @@ class UserConfig:
                 continue
             wing = p["name"]
             for md in palace.glob("*.md"):
-                files.append({
-                    "path": str(md),
-                    "wing": wing,
-                    "name": md.name,
-                })
+                files.append(
+                    {
+                        "path": str(md),
+                        "wing": wing,
+                        "name": md.name,
+                    }
+                )
 
         return files
 
@@ -413,6 +422,7 @@ class UserConfig:
 # 全局单例
 # ---------------------------------------------------------------------------
 _config = None
+
 
 def get_config() -> UserConfig:
     global _config

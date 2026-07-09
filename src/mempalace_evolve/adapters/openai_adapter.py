@@ -20,7 +20,6 @@ import json
 from typing import Any
 
 from mempalace_evolve.adapters.base import AgentAdapter
-from mempalace_evolve.sdk import MemPalace
 
 
 class OpenAIAdapter(AgentAdapter):
@@ -47,10 +46,22 @@ class OpenAIAdapter(AgentAdapter):
                         "type": "object",
                         "properties": {
                             "content": {"type": "string", "description": "What to remember"},
-                            "room": {"type": "string", "description": "Category: decisions, errors, config, progress"},
-                            "metadata": {"type": "object", "description": "Optional metadata fields"},
-                            "source": {"type": "string", "description": "Optional source identifier"},
-                            "ttl": {"type": "integer", "description": "Optional time-to-live in seconds"},
+                            "room": {
+                                "type": "string",
+                                "description": "Category: decisions, errors, config, progress",
+                            },
+                            "metadata": {
+                                "type": "object",
+                                "description": "Optional metadata fields",
+                            },
+                            "source": {
+                                "type": "string",
+                                "description": "Optional source identifier",
+                            },
+                            "ttl": {
+                                "type": "integer",
+                                "description": "Optional time-to-live in seconds",
+                            },
                             "tags": {
                                 "type": "array",
                                 "items": {"type": "string"},
@@ -70,8 +81,15 @@ class OpenAIAdapter(AgentAdapter):
                         "type": "object",
                         "properties": {
                             "query": {"type": "string", "description": "What to search for"},
-                            "limit": {"type": "integer", "description": "Max results", "default": 5},
-                            "room": {"type": "string", "description": "Optional room/category filter"},
+                            "limit": {
+                                "type": "integer",
+                                "description": "Max results",
+                                "default": 5,
+                            },
+                            "room": {
+                                "type": "string",
+                                "description": "Optional room/category filter",
+                            },
                         },
                         "required": ["query"],
                     },
@@ -117,9 +135,7 @@ class OpenAIAdapter(AgentAdapter):
             return json.dumps({"results": results}, ensure_ascii=False)
 
         elif name == "mempalace_add_fact":
-            self.palace.add_fact(
-                arguments["subject"], arguments["predicate"], arguments["object"]
-            )
+            self.palace.add_fact(arguments["subject"], arguments["predicate"], arguments["object"])
             return json.dumps({"added": True})
 
         return json.dumps({"error": f"Unknown tool: {name}"})

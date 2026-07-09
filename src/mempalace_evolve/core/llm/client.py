@@ -20,8 +20,7 @@ import json
 import logging
 import os
 import time
-from dataclasses import dataclass, field
-from typing import Any, Callable
+from dataclasses import dataclass
 
 from pydantic import BaseModel, ValidationError
 
@@ -30,9 +29,11 @@ logger = logging.getLogger("mempalace.llm")
 
 # ── Configuration ─────────────────────────────────────────────────────
 
+
 @dataclass
 class LLMConfig:
     """Configuration for the LLM client."""
+
     api_key: str | None = None
     base_url: str = "https://api.openai.com/v1"
     model: str = "gpt-4o-mini"
@@ -45,8 +46,7 @@ class LLMConfig:
     def from_env(cls) -> LLMConfig:
         """Build config from environment variables."""
         return cls(
-            api_key=os.environ.get("OPENAI_API_KEY")
-                     or os.environ.get("LLM_API_KEY"),
+            api_key=os.environ.get("OPENAI_API_KEY") or os.environ.get("LLM_API_KEY"),
             base_url=os.environ.get("LLM_BASE_URL", "https://api.openai.com/v1"),
             model=os.environ.get("LLM_MODEL", "gpt-4o-mini"),
             temperature=float(os.environ.get("LLM_TEMPERATURE", "0.1")),
@@ -58,9 +58,11 @@ class LLMConfig:
 
 # ── Usage tracking ────────────────────────────────────────────────────
 
+
 @dataclass
 class LLMUsage:
     """Tracks LLM API usage for cost estimation."""
+
     total_prompt_tokens: int = 0
     total_completion_tokens: int = 0
     total_calls: int = 0
@@ -75,18 +77,19 @@ class LLMUsage:
     def estimated_cost_usd(self, model: str = "gpt-4o-mini") -> float:
         """Rough cost estimate based on model pricing."""
         rates = {
-            "gpt-4o-mini": (0.15, 0.60),   # per 1M tokens
+            "gpt-4o-mini": (0.15, 0.60),  # per 1M tokens
             "gpt-4o": (2.50, 10.00),
             "gpt-4": (30.00, 60.00),
         }
         prompt_rate, completion_rate = rates.get(model, (1.00, 2.00))
         return (
-            self.total_prompt_tokens / 1_000_000 * prompt_rate +
-            self.total_completion_tokens / 1_000_000 * completion_rate
+            self.total_prompt_tokens / 1_000_000 * prompt_rate
+            + self.total_completion_tokens / 1_000_000 * completion_rate
         )
 
 
 # ── LLM Client ────────────────────────────────────────────────────────
+
 
 class LLMClient:
     """Lightweight OpenAI-compatible LLM client.
@@ -174,17 +177,26 @@ class LLMClient:
                 raw = data["choices"][0]["message"]["content"]
                 return self._parse_json(raw, response_model)
 
-            except (httpx.HTTPStatusError, httpx.RequestError, json.JSONDecodeError,
-                    KeyError, IndexError) as e:
+            except (
+                httpx.HTTPStatusError,
+                httpx.RequestError,
+                json.JSONDecodeError,
+                KeyError,
+                IndexError,
+            ) as e:
                 last_error = str(e)
                 logger.warning(
                     "LLM call attempt %d/%d failed: %s",
-                    attempt + 1, 1 + self.config.max_retries, e,
+                    attempt + 1,
+                    1 + self.config.max_retries,
+                    e,
                 )
                 if attempt < self.config.max_retries:
                     time.sleep(1 * (attempt + 1))  # simple backoff
 
-        logger.error("LLM call failed after %d attempts: %s", 1 + self.config.max_retries, last_error)
+        logger.error(
+            "LLM call failed after %d attempts: %s", 1 + self.config.max_retries, last_error
+        )
         return None
 
     def _parse_json(self, raw: str, model: type[BaseModel]) -> BaseModel | None:
@@ -266,12 +278,18 @@ class LLMClient:
                 last_error = str(e)
                 logger.warning(
                     "LLM text generation attempt %d/%d failed: %s",
-                    attempt + 1, 1 + self.config.max_retries, e,
+                    attempt + 1,
+                    1 + self.config.max_retries,
+                    e,
                 )
                 if attempt < self.config.max_retries:
                     time.sleep(1 * (attempt + 1))
 
-        logger.error("LLM text generation failed after %d attempts: %s", 1 + self.config.max_retries, last_error)
+        logger.error(
+            "LLM text generation failed after %d attempts: %s",
+            1 + self.config.max_retries,
+            last_error,
+        )
         return None
 
 

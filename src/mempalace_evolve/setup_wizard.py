@@ -3,23 +3,33 @@
 Detects AI tools (Claude Code / Cursor), collects parameters,
 writes MCP server config, and verifies the installation works.
 """
+
 from __future__ import annotations
 
 import json
-import os
 import platform
 import shutil
-import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
 from mempalace_evolve.terminal import (
-    banner, bold, bullet, cyan, dim, divider, fail, green, red, step, yellow,
+    banner,
+    bold,
+    bullet,
+    cyan,
+    dim,
+    divider,
+    fail,
+    green,
+    red,
+    step,
+    yellow,
 )
 
 
 # ── helpers ──────────────────────────────────────────────────────
+
 
 def _input(prompt: str, default: str = "") -> str:
     """Print prompt and read a line. Returns default on empty input."""
@@ -41,6 +51,7 @@ def _confirm(prompt: str, default: bool = True) -> bool:
 
 
 # ── environment detection ────────────────────────────────────────
+
 
 def _detect_os() -> str:
     return platform.system()  # Windows / Darwin / Linux
@@ -87,6 +98,7 @@ def _which(cmd: str) -> str | None:
 
 # ── main wizard ──────────────────────────────────────────────────
 
+
 def run_setup(wing: str | None = None, palace_path: str | None = None) -> bool:
     """Run the setup wizard. Returns True on success."""
     print(banner("MemPalace Setup Wizard"))
@@ -115,6 +127,7 @@ def run_setup(wing: str | None = None, palace_path: str | None = None) -> bool:
     # chromadb
     try:
         import chromadb
+
         print(bullet(f"chromadb {chromadb.__version__}"))
         passed += 1
     except ImportError:
@@ -133,6 +146,7 @@ def run_setup(wing: str | None = None, palace_path: str | None = None) -> bool:
     # fastmcp
     try:
         import fastmcp
+
         print(bullet(f"fastmcp {fastmcp.__version__}"))
         passed += 1
     except ImportError:
@@ -289,7 +303,7 @@ def run_setup(wing: str | None = None, palace_path: str | None = None) -> bool:
             mempalace_cfg = data.get("mcpServers", {}).get("mempalace")
             if mempalace_cfg:
                 print(bullet("JSON 格式验证通过"))
-                print(bullet(f"mempalace 配置项已存在"))
+                print(bullet("mempalace 配置项已存在"))
             else:
                 print(fail("未找到 mempalace 配置项"))
                 failed += 1
@@ -309,9 +323,10 @@ def run_setup(wing: str | None = None, palace_path: str | None = None) -> bool:
 
     # ── Summary ──
     print(bold(green("\n  配置完成！")))
-    print(dim(f"""
+    print(
+        dim(f"""
   下一步:
-    1. 重启你的 AI 工具（{_tool_display(target) if target else 'Claude Code / Cursor'}）
+    1. 重启你的 AI 工具（{_tool_display(target) if target else "Claude Code / Cursor"}）
     2. AI 会自动获得记忆工具: remember, recall, add_fact, query_entity, forget, evolve
     3. 试试让 AI 记住点什么："记住这个项目用 FastAPI"
 
@@ -319,7 +334,8 @@ def run_setup(wing: str | None = None, palace_path: str | None = None) -> bool:
     mempalace recall "搜索词"     搜索记忆
     mempalace evolve              手动触发进化
     mempalace doctor              检查环境
-"""))
+""")
+    )
     return True
 
 
@@ -384,7 +400,8 @@ def _verify_mcp_start(palace_path: str, wing: str) -> bool:
     try:
         tmp = tempfile.mkdtemp(prefix="mempalace_setup_verify_")
         from mempalace_evolve.adapters.mcp_server import create_mcp_server
-        mcp = create_mcp_server(palace_path=tmp, wing="setup_test")
+
+        create_mcp_server(palace_path=tmp, wing="setup_test")
         # If we got here, the server object was created successfully
         shutil.rmtree(tmp, ignore_errors=True)
         return True

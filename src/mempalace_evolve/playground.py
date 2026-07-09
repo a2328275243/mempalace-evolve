@@ -1,18 +1,23 @@
 """mempalace playground — interactive REPL for exploring memories."""
+
 import cmd
 import os
 
 from mempalace_evolve.terminal import (
-    bold, cyan, green, yellow, dim, divider, magenta,
+    bold,
+    cyan,
+    green,
+    yellow,
+    dim,
+    magenta,
 )
 
 
 class PalaceShell(cmd.Cmd):
     """Interactive memory palace shell."""
 
-    intro = (
-        bold(cyan("\n  MemPalace Playground"))
-        + dim("\n  输入文字即存储 | /search 搜索 | /help 帮助 | /quit 退出\n")
+    intro = bold(cyan("\n  MemPalace Playground")) + dim(
+        "\n  输入文字即存储 | /search 搜索 | /help 帮助 | /quit 退出\n"
     )
     prompt = green("  mempalace> ")
 

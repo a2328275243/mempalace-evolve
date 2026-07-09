@@ -23,7 +23,6 @@ import json
 from typing import Any
 
 from mempalace_evolve.adapters.base import AgentAdapter
-from mempalace_evolve.sdk import MemPalace
 
 
 class LangChainAdapter(AgentAdapter):
@@ -59,10 +58,14 @@ class LangChainAdapter(AgentAdapter):
                 description="Category: decisions, errors, config, architecture, general",
             )
 
-            metadata: dict[str, Any] | None = Field(default=None, description="Optional metadata fields")
+            metadata: dict[str, Any] | None = Field(
+                default=None, description="Optional metadata fields"
+            )
             source: str = Field(default="", description="Optional source identifier")
             ttl: int | None = Field(default=None, description="Optional time-to-live in seconds")
-            tags: list[str] | None = Field(default=None, description="Optional labels for filtering or access control")
+            tags: list[str] | None = Field(
+                default=None, description="Optional labels for filtering or access control"
+            )
 
         class RecallInput(BaseModel):
             query: str = Field(description="Natural language search query")
@@ -95,7 +98,12 @@ class LangChainAdapter(AgentAdapter):
         def _recall(query: str, limit: int = 5, room: str | None = None) -> str:
             results = self.palace.recall(query, limit=limit, room=room)
             return json.dumps(
-                {"results": [{"content": r["content"], "room": r.get("metadata", {}).get("room", "")} for r in results]},
+                {
+                    "results": [
+                        {"content": r["content"], "room": r.get("metadata", {}).get("room", "")}
+                        for r in results
+                    ]
+                },
                 ensure_ascii=False,
             )
 

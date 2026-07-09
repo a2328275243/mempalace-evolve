@@ -66,7 +66,8 @@ def _parse_jsonl_transcript(raw: str) -> str:
             if isinstance(content, list):
                 # Handle structured content blocks
                 text_parts = [
-                    b.get("text", "") for b in content
+                    b.get("text", "")
+                    for b in content
                     if isinstance(b, dict) and b.get("type") == "text"
                 ]
                 content = "\n".join(text_parts)
@@ -121,7 +122,9 @@ def run_stop_hook(
 
     logger.info(
         "Stop hook: extracted=%d, stored=%d, promoted=%d",
-        result["extracted"], result["stored"], result["promoted"],
+        result["extracted"],
+        result["stored"],
+        result["promoted"],
     )
     return result
 

@@ -30,6 +30,9 @@ def mock_palace():
     mock_sync.export.return_value = '{"data": "exported"}'
     mock_sync.evolve.return_value = {"cycles": 1}
     mock_sync.batch_remember.return_value = {"added": 2, "skipped": 0, "ids": ["mem-1", "mem-2"]}
+    mock_sync.batch_recall.return_value = {"results": [{"query": "q", "memories": []}]}
+    mock_sync.batch_forget.return_value = {"requested": 2, "deleted": 2, "not_found": 0}
+    mock_sync.recall_stream.return_value = iter([{"content": "streamed"}])
     # Auto-proxy methods (not explicitly defined in AsyncSDK)
     mock_sync.fuzzy_search.return_value = [{"id": "1", "content": "hit"}]
     mock_sync.recent.return_value = [{"id": "1"}, {"id": "2"}]
@@ -106,7 +109,45 @@ class TestAsyncMemPalace:
             result = await palace.batch_remember([{"content": "a"}, {"content": "b"}])
             assert result["added"] == 2
             assert len(result["ids"]) == 2
-            mock_palace.batch_remember.assert_called_once()
+            mock_palace.batch_remember.assert_called_once_with(
+                memories=[{"content": "a"}, {"content": "b"}],
+            )
+
+    @pytest.mark.asyncio
+    async def test_batch_recall_forwards_threshold(self, mock_palace):
+        async with AsyncMemPalace(wing="w") as palace:
+            result = await palace.batch_recall(
+                ["q"],
+                room="decisions",
+                limit=2,
+                threshold=0.4,
+            )
+            assert "results" in result
+            mock_palace.batch_recall.assert_called_once_with(
+                queries=["q"],
+                room="decisions",
+                limit=2,
+                threshold=0.4,
+            )
+
+    @pytest.mark.asyncio
+    async def test_recall_forwards_threshold_and_hybrid(self, mock_palace):
+        async with AsyncMemPalace(wing="w") as palace:
+            await palace.recall("q", room="decisions", limit=2, threshold=0.4, hybrid=False)
+            mock_palace.recall.assert_called_once_with(
+                query="q",
+                room="decisions",
+                limit=2,
+                threshold=0.4,
+                hybrid=False,
+            )
+
+    @pytest.mark.asyncio
+    async def test_recall_stream_returns_list(self, mock_palace):
+        async with AsyncMemPalace(wing="w") as palace:
+            result = await palace.recall_stream("q")
+            assert result == [{"content": "streamed"}]
+            mock_palace.recall_stream.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_recall_many_concurrent(self, mock_palace):
@@ -122,6 +163,28 @@ class TestAsyncMemPalace:
             result = await palace.remember_many([{"content": "x"}])
             assert result["added"] == 2  # mock returns added=2
             mock_palace.batch_remember.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_real_batch_methods(self, tmp_palace):
+        async with AsyncMemPalace(palace_path=tmp_palace, wing="async_batch") as palace:
+            stored = await palace.batch_remember([
+                {"content": "Async batch target", "room": "config"},
+                {"content": "Async batch target", "room": "decisions", "source": "async-other"},
+            ])
+            assert stored.stored == 2
+
+            recalled = await palace.batch_recall(
+                ["Async batch target"],
+                room="config",
+                limit=5,
+                threshold=0.8,
+            )
+            memories = recalled.results[0]["memories"]
+            assert len(memories) >= 1
+            assert all(m["metadata"].get("room") == "config" for m in memories)
+
+            deleted = await palace.batch_forget(stored.ids)
+            assert deleted.deleted == 2
 
     @pytest.mark.asyncio
     async def test_query_entity(self, mock_palace):

@@ -9,10 +9,9 @@ Provides:
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
-from mempalace_evolve.core.chroma_helper import get_collection
 
 logger = logging.getLogger("mempalace.advanced_query")
 
@@ -57,9 +56,16 @@ class AdvancedQuery:
         """
         if mode == "hybrid" and query:
             return self.hybrid_search(
-                query=query, limit=limit, room=room, threshold=threshold,
-                memory_types=memory_types, tags=tags, time_from=time_from,
-                time_to=time_to, metadata_filter=metadata_filter, expand_kg=expand_kg,
+                query=query,
+                limit=limit,
+                room=room,
+                threshold=threshold,
+                memory_types=memory_types,
+                tags=tags,
+                time_from=time_from,
+                time_to=time_to,
+                metadata_filter=metadata_filter,
+                expand_kg=expand_kg,
             )
         if mode == "semantic" and query:
             collection = self._get_collection()
@@ -85,8 +91,13 @@ class AdvancedQuery:
                         output.append({"content": doc, "metadata": meta, "distance": dist})
             return output
         return self.filter_by_metadata(
-            limit=limit, room=room, memory_types=memory_types, tags=tags,
-            time_from=time_from, time_to=time_to, metadata_filter=metadata_filter,
+            limit=limit,
+            room=room,
+            memory_types=memory_types,
+            tags=tags,
+            time_from=time_from,
+            time_to=time_to,
+            metadata_filter=metadata_filter,
         )
 
     def hybrid_search(
@@ -196,12 +207,14 @@ class AdvancedQuery:
                         continue
 
                 score = self._compute_score(dist, meta)
-                output.append({
-                    "content": doc,
-                    "metadata": meta,
-                    "distance": dist,
-                    "_score": score,
-                })
+                output.append(
+                    {
+                        "content": doc,
+                        "metadata": meta,
+                        "distance": dist,
+                        "_score": score,
+                    }
+                )
                 seen_ids.add(did)
 
         # Optional KG expansion
@@ -312,11 +325,13 @@ class AdvancedQuery:
                     if not any(t in meta_tags for t in tags):
                         continue
 
-                output.append({
-                    "id": doc_id,
-                    "content": doc,
-                    "metadata": meta,
-                })
+                output.append(
+                    {
+                        "id": doc_id,
+                        "content": doc,
+                        "metadata": meta,
+                    }
+                )
         return output
 
     def _compute_score(self, distance: float, meta: dict) -> float:

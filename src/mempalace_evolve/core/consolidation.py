@@ -12,10 +12,8 @@ consolidation.py — 每日记忆整合系统
 6. 生成整合报告
 """
 
-import logging
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
+from datetime import datetime, timezone
 
 from mempalace_evolve.core.chroma_helper import get_collection, get_all_metadata, add_drawer
 from mempalace_evolve.core.config import get_config
@@ -63,8 +61,8 @@ def _text_similarity(text1: str, text2: str) -> float:
 
     def _normalize(s: str) -> str:
         """统一空白、去尾部标点、折叠连续空格"""
-        s = re.sub(r'\s+', ' ', s).strip()
-        s = s.rstrip('.,;:!?。，；：！？')
+        s = re.sub(r"\s+", " ", s).strip()
+        s = s.rstrip(".,;:!?。，；：！？")
         return s
 
     n1 = _normalize(text1)
@@ -76,6 +74,7 @@ def _text_similarity(text1: str, text2: str) -> float:
     # 任何实质性文本差异 → 返回低分，不触发合并
     # 用 SequenceMatcher 给出参考分数（用于日志/调试），但压到安全范围
     from difflib import SequenceMatcher
+
     raw_ratio = SequenceMatcher(None, n1, n2).ratio()
     return raw_ratio * 0.85  # 确保最高不超过 ~0.85
 
@@ -124,13 +123,15 @@ def identify_duplicates(drawers, threshold=0.95):
                     continue
                 similarity = _text_similarity(text1, text2)
                 if similarity >= threshold:
-                    duplicates.append({
-                        "drawer1": d1.get("id"),
-                        "drawer2": d2.get("id"),
-                        "similarity": similarity,
-                        "text1": text1[:100],
-                        "text2": text2[:100],
-                    })
+                    duplicates.append(
+                        {
+                            "drawer1": d1.get("id"),
+                            "drawer2": d2.get("id"),
+                            "similarity": similarity,
+                            "text1": text1[:100],
+                            "text2": text2[:100],
+                        }
+                    )
 
     return duplicates
 
@@ -138,7 +139,11 @@ def identify_duplicates(drawers, threshold=0.95):
 def identify_conflicts(drawers, kg: KnowledgeGraph):
     """识别冲突记忆（基于实体共享检测矛盾的决策）"""
     try:
-        from entity_detector import extract_chinese_candidates, extract_candidates as extract_english_candidates
+        from entity_detector import (
+            extract_chinese_candidates,
+            extract_candidates as extract_english_candidates,
+        )
+
         _has_entity_detector = True
     except ImportError:
         _has_entity_detector = False
@@ -173,16 +178,18 @@ def identify_conflicts(drawers, kg: KnowledgeGraph):
                     pair_key = (decisions[i].get("id"), decisions[j].get("id"))
                     if pair_key not in checked:
                         checked.add(pair_key)
-                        conflicts.append({
-                            "type": "decision_conflict",
-                            "shared_entities": list(shared),
-                            "count": 2,
-                            "drawers": [decisions[i].get("id"), decisions[j].get("id")],
-                            "content_preview": [
-                                decisions[i].get("document", "")[:100],
-                                decisions[j].get("document", "")[:100],
-                            ]
-                        })
+                        conflicts.append(
+                            {
+                                "type": "decision_conflict",
+                                "shared_entities": list(shared),
+                                "count": 2,
+                                "drawers": [decisions[i].get("id"), decisions[j].get("id")],
+                                "content_preview": [
+                                    decisions[i].get("document", "")[:100],
+                                    decisions[j].get("document", "")[:100],
+                                ],
+                            }
+                        )
     else:
         # 回退到简单的关键词检测
         decision_topics = defaultdict(list)
@@ -195,12 +202,14 @@ def identify_conflicts(drawers, kg: KnowledgeGraph):
 
         for topic, topic_decisions in decision_topics.items():
             if len(topic_decisions) > 1:
-                conflicts.append({
-                    "type": "decision_conflict",
-                    "topic": topic,
-                    "count": len(topic_decisions),
-                    "drawers": [d.get("id") for d in topic_decisions]
-                })
+                conflicts.append(
+                    {
+                        "type": "decision_conflict",
+                        "topic": topic,
+                        "count": len(topic_decisions),
+                        "drawers": [d.get("id") for d in topic_decisions],
+                    }
+                )
 
     return conflicts
 
@@ -214,7 +223,7 @@ def generate_daily_summary(drawers, wing=None):
         "by_room": defaultdict(int),
         "key_facts": [],
         "decisions": [],
-        "errors": []
+        "errors": [],
     }
 
     for d in drawers:
@@ -241,18 +250,19 @@ def merge_similar_drawers(collection, duplicates, dry_run=True):
 
     for dup in duplicates:
         if dry_run:
-            merged.append({
-                "action": "would_merge",
-                "drawer1": dup["drawer1"],
-                "drawer2": dup["drawer2"],
-                "similarity": dup["similarity"]
-            })
+            merged.append(
+                {
+                    "action": "would_merge",
+                    "drawer1": dup["drawer1"],
+                    "drawer2": dup["drawer2"],
+                    "similarity": dup["similarity"],
+                }
+            )
         else:
             # 实际合并：保留较新的，删除较旧的
             try:
                 items = collection.get(
-                    ids=[dup["drawer1"], dup["drawer2"]],
-                    include=["documents", "metadatas"]
+                    ids=[dup["drawer1"], dup["drawer2"]], include=["documents", "metadatas"]
                 )
                 if not items or not items["metadatas"] or len(items["metadatas"]) < 2:
                     merged.append({"action": "skipped", "reason": "not_found", "dup": dup})
@@ -303,19 +313,23 @@ def merge_similar_drawers(collection, duplicates, dry_run=True):
                 conn.commit()
                 # conn reused by KG connection pool
 
-                merged.append({
-                    "action": "merged",
-                    "kept_id": newer_id,
-                    "deleted_id": older_id,
-                    "similarity": dup["similarity"]
-                })
+                merged.append(
+                    {
+                        "action": "merged",
+                        "kept_id": newer_id,
+                        "deleted_id": older_id,
+                        "similarity": dup["similarity"],
+                    }
+                )
             except Exception as e:
-                merged.append({
-                    "action": "error",
-                    "drawer1": dup["drawer1"],
-                    "drawer2": dup["drawer2"],
-                    "error": str(e)
-                })
+                merged.append(
+                    {
+                        "action": "error",
+                        "drawer1": dup["drawer1"],
+                        "drawer2": dup["drawer2"],
+                        "error": str(e),
+                    }
+                )
 
     return merged
 
@@ -367,10 +381,7 @@ def consolidate_daily(wing=None, dry_run=False, palace_path=None, collection=Non
     today_drawers = get_today_drawers(collection, wing)
 
     if not today_drawers:
-        return {
-            "status": "no_drawers",
-            "message": "今天没有新的记忆"
-        }
+        return {"status": "no_drawers", "message": "今天没有新的记忆"}
 
     # 2. 识别重复
     duplicates = identify_duplicates(today_drawers)
@@ -395,47 +406,38 @@ def consolidate_daily(wing=None, dry_run=False, palace_path=None, collection=Non
         "summary": summary,
         "duplicates": {
             "count": len(duplicates),
-            "items": duplicates[:5]  # 只返回前 5 个
+            "items": duplicates[:5],  # 只返回前 5 个
         },
-        "conflicts": {
-            "count": len(conflicts),
-            "items": conflicts
-        },
-        "merged": {
-            "count": len(merged),
-            "items": merged[:5]
-        },
-        "kg_updates": {
-            "count": len(kg_updates),
-            "items": kg_updates[:10]
-        },
-        "dry_run": dry_run
+        "conflicts": {"count": len(conflicts), "items": conflicts},
+        "merged": {"count": len(merged), "items": merged[:5]},
+        "kg_updates": {"count": len(kg_updates), "items": kg_updates[:10]},
+        "dry_run": dry_run,
     }
 
     # 8. 保存每日摘要到 daily_summaries room
     if not dry_run:
         summary_content = f"""# 每日记忆整合报告
 
-日期: {report['date']}
-项目: {report['wing']}
+日期: {report["date"]}
+项目: {report["wing"]}
 
 ## 统计
-- 总记忆数: {summary['total_drawers']}
+- 总记忆数: {summary["total_drawers"]}
 - 重复记忆: {len(duplicates)}
 - 冲突记忆: {len(conflicts)}
 - 知识图谱更新: {len(kg_updates)}
 
 ## 按类别分布
-{chr(10).join(f'- {room}: {count}' for room, count in summary['by_room'].items())}
+{chr(10).join(f"- {room}: {count}" for room, count in summary["by_room"].items())}
 
 ## 关键事实
-{chr(10).join(f'- {fact}' for fact in summary['key_facts'][:5])}
+{chr(10).join(f"- {fact}" for fact in summary["key_facts"][:5])}
 
 ## 决策记录
-{chr(10).join(f'- {dec}' for dec in summary['decisions'][:5])}
+{chr(10).join(f"- {dec}" for dec in summary["decisions"][:5])}
 
 ## 错误模式
-{chr(10).join(f'- {err}' for err in summary['errors'][:5])}
+{chr(10).join(f"- {err}" for err in summary["errors"][:5])}
 """
 
         add_drawer(

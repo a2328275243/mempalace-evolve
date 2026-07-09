@@ -12,8 +12,13 @@ logger = logging.getLogger("mempalace_evolve.evolution")
 
 # Boilerplate patterns to penalize
 BOILERPLATE = [
-    "template", "placeholder", "todo", "fixme",
-    "lorem ipsum", "example", "sample",
+    "template",
+    "placeholder",
+    "todo",
+    "fixme",
+    "lorem ipsum",
+    "example",
+    "sample",
 ]
 
 

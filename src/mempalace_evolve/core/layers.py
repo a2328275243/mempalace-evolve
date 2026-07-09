@@ -11,11 +11,10 @@ MemoryStack: 统一接口
 import logging
 from pathlib import Path
 
-logger = logging.getLogger("mempalace.layers")
-
-from mempalace_evolve.core.config import get_config, GLOBAL_CHROMA
 from mempalace_evolve.core.chroma_helper import get_collection
-from mempalace_evolve.core.lifecycle import decay_score
+from mempalace_evolve.core.config import GLOBAL_CHROMA, get_config
+
+logger = logging.getLogger("mempalace.layers")
 
 
 class Layer0:
@@ -63,6 +62,7 @@ class Layer1:
 
     def generate(self, force_refresh: bool = False) -> str:
         import time
+
         now = time.time()
         if not force_refresh and self._cache and (now - self._cache_time) < self._cache_ttl:
             if self._data_hash is not None:
@@ -185,6 +185,7 @@ class Layer1:
                 imp = meta.get("importance", "0.5")
                 parts.append(f"{doc_id}|{w}|{r}|{imp}")
             import hashlib
+
             return hashlib.md5("|".join(parts).encode()).hexdigest()[:16]
         except Exception:
             return None
@@ -192,8 +193,9 @@ class Layer1:
     # Layer1 内部辅助方法
     # ------------------------------------------------------------------
 
-    def _fetch_by_importance(self, col, where_filter, min_importance: float,
-                             limit: int) -> list[dict]:
+    def _fetch_by_importance(
+        self, col, where_filter, min_importance: float, limit: int
+    ) -> list[dict]:
         """按重要性下限筛选 drawers，返回已排序的列表。
 
         使用 ChromaDB get + Python 侧过滤代替全量扫描。
@@ -216,14 +218,16 @@ class Layer1:
                 doc = results["documents"][i] if results["documents"] else ""
                 imp = float(meta.get("importance", 0.5))
                 if imp >= min_importance:
-                    drawers.append({
-                        "_id": doc_id,
-                        "text": doc,
-                        "wing": meta.get("wing", "?"),
-                        "room": meta.get("room", "general"),
-                        "source": meta.get("source_file", "?"),
-                        "score": imp,
-                    })
+                    drawers.append(
+                        {
+                            "_id": doc_id,
+                            "text": doc,
+                            "wing": meta.get("wing", "?"),
+                            "room": meta.get("room", "general"),
+                            "source": meta.get("source_file", "?"),
+                            "score": imp,
+                        }
+                    )
         except Exception:
             logger.debug("_fetch_by_importance failed", exc_info=True)
 
@@ -234,6 +238,7 @@ class Layer1:
         drawers = []
         try:
             from mempalace_evolve.core.chroma_helper import get_all_metadata
+
             all_items = get_all_metadata(col)
             for item in all_items:
                 meta = item.get("metadata", {})
@@ -244,26 +249,23 @@ class Layer1:
                         if "$and" in where_filter:
                             conditions = where_filter["$and"]
                             match = all(
-                                meta.get(k) == v
-                                for cond in conditions
-                                for k, v in cond.items()
+                                meta.get(k) == v for cond in conditions for k, v in cond.items()
                             )
                         else:
-                            match = all(
-                                meta.get(k) == v
-                                for k, v in where_filter.items()
-                            )
+                            match = all(meta.get(k) == v for k, v in where_filter.items())
                         if not match:
                             continue
                 imp = float(meta.get("importance", 0.5))
-                drawers.append({
-                    "_id": item.get("id"),
-                    "text": doc,
-                    "wing": meta.get("wing", "?"),
-                    "room": meta.get("room", "general"),
-                    "source": meta.get("source_file", "?"),
-                    "score": imp,
-                })
+                drawers.append(
+                    {
+                        "_id": item.get("id"),
+                        "text": doc,
+                        "wing": meta.get("wing", "?"),
+                        "room": meta.get("room", "general"),
+                        "source": meta.get("source_file", "?"),
+                        "score": imp,
+                    }
+                )
         except Exception:
             logger.debug("_fetch_all_batched failed", exc_info=True)
         return drawers
@@ -320,8 +322,7 @@ class Layer3:
     def __init__(self, palace_path: str = None):
         self.palace_path = palace_path or str(GLOBAL_CHROMA)
 
-    def search(self, query: str, wing: str = None, room: str = None,
-               n_results: int = 5) -> str:
+    def search(self, query: str, wing: str = None, room: str = None, n_results: int = 5) -> str:
         results = self.search_raw(query, wing, room, n_results)
         if not results:
             return f'## L3 -- 搜索结果\n（无结果: "{query}"）'
@@ -336,13 +337,24 @@ class Layer3:
             )
         return "".join(lines)
 
-    def search_raw(self, query: str, wing: str = None, room: str = None,
-                   n_results: int = 5, time_range=None, time_bonus_weight: float = 0.0,
-                   adaptive: bool = False, cross_wing_diversity: bool = False) -> list[dict]:
+    def search_raw(
+        self,
+        query: str,
+        wing: str = None,
+        room: str = None,
+        n_results: int = 5,
+        time_range=None,
+        time_bonus_weight: float = 0.0,
+        adaptive: bool = False,
+        cross_wing_diversity: bool = False,
+    ) -> list[dict]:
         # 共指消解：将查询中的代词替换为实际实体名
         _resolve_query = None
         try:
-            from mempalace_evolve.core.optional.coref_resolver import resolve_query as _resolve_query
+            from mempalace_evolve.core.optional.coref_resolver import (
+                resolve_query as _resolve_query,
+            )
+
             logger.info("Coreference resolution enabled")
         except ImportError:
             logger.warning("coref_resolver not installed - coreference resolution disabled.")
@@ -403,21 +415,28 @@ class Layer3:
             if meta.get("status") == "superseded":
                 continue
 
-            output.append({
-                "id": doc_id,
-                "text": doc,
-                "wing": meta.get("wing", "?"),
-                "room": meta.get("room", "general"),
-                "source_file": meta.get("source_file", "?"),
-                "similarity": 1 - dist,
-                "distance": dist,
-                "metadata": meta,
-            })
+            output.append(
+                {
+                    "id": doc_id,
+                    "text": doc,
+                    "wing": meta.get("wing", "?"),
+                    "room": meta.get("room", "general"),
+                    "source_file": meta.get("source_file", "?"),
+                    "similarity": 1 - dist,
+                    "distance": dist,
+                    "metadata": meta,
+                }
+            )
 
         # 自适应评分
         if adaptive and output:
             try:
-                from mempalace_evolve.core.adaptive_scorer import get_wing_adjusted_confidence, adjust_scores, update_wing_baseline
+                from mempalace_evolve.core.adaptive_scorer import (
+                    get_wing_adjusted_confidence,
+                    adjust_scores,
+                    update_wing_baseline,
+                )
+
                 raw_distances = [r["distance"] for r in output]
                 # 更新 wing 历史基线
                 wing_name = wing or "global"
@@ -436,9 +455,10 @@ class Layer3:
             try:
                 if self._re_shorten is None:
                     import re as _re
+
                     self._re_shorten = (
-                        _re.compile(r'\d+[\.\d]*[万亿千百]?[%％]?|[\d]+\.[\d]+'),
-                        _re.compile(r'[A-Z][a-zA-Z]{2,}|[\u4e00-\u9fff]{2,4}'),
+                        _re.compile(r"\d+[\.\d]*[万亿千百]?[%％]?|[\d]+\.[\d]+"),
+                        _re.compile(r"[A-Z][a-zA-Z]{2,}|[\u4e00-\u9fff]{2,4}"),
                     )
                 _num_pattern, _ent_pattern = self._re_shorten
                 query_nums = set(_num_pattern.findall(query))
@@ -467,7 +487,10 @@ class Layer3:
         _time_overlap_score = None
         if time_range and time_bonus_weight > 0 and output:
             try:
-                from mempalace_evolve.core.optional.time_parser import time_overlap_score as _time_overlap_score
+                from mempalace_evolve.core.optional.time_parser import (
+                    time_overlap_score as _time_overlap_score,
+                )
+
                 logger.info("Time-aware weighting enabled")
             except ImportError:
                 logger.warning("time_parser not installed - time-aware weighting disabled.")
@@ -480,7 +503,9 @@ class Layer3:
                     for r in output:
                         filed_at = r["metadata"].get("filed_at", "")
                         bonus = _time_overlap_score(filed_at, q_start, q_end)
-                        r["similarity"] = r["similarity"] * (1 - time_bonus_weight) + bonus * time_bonus_weight
+                        r["similarity"] = (
+                            r["similarity"] * (1 - time_bonus_weight) + bonus * time_bonus_weight
+                        )
                     output.sort(key=lambda x: -x["similarity"])
                 except Exception as e:
                     logger.debug(f"Time-aware weighting failed: {e}")
@@ -508,8 +533,7 @@ class Layer3:
 
         # 按翼的最高相似度排序翼顺序
         wings_ordered = sorted(
-            wing_groups.keys(),
-            key=lambda w: -wing_groups[w][0].get("similarity", 0)
+            wing_groups.keys(), key=lambda w: -wing_groups[w][0].get("similarity", 0)
         )
 
         # 轮流抽取
@@ -524,8 +548,9 @@ class Layer3:
 
         return final[:n_results]
 
-    def search_bundled(self, query: str, wing: str = None, room: str = None,
-                       n_results: int = 5, max_hops: int = 2) -> dict:
+    def search_bundled(
+        self, query: str, wing: str = None, room: str = None, n_results: int = 5, max_hops: int = 2
+    ) -> dict:
         """
         增强搜索：返回直接命中 + 通过 KG 关联的记忆束。
 
@@ -540,6 +565,7 @@ class Layer3:
         _BundleScorer = None
         try:
             from mempalace_evolve.core.optional.bundle_scorer import BundleScorer as _BundleScorer
+
             logger.info("Bundle scoring enabled")
         except ImportError:
             logger.warning("bundle_scorer not installed - bundle scoring disabled.")
@@ -550,6 +576,7 @@ class Layer3:
         if _BundleScorer:
             try:
                 from mempalace_evolve.core.knowledge_graph import KnowledgeGraph
+
                 kg = KnowledgeGraph()
                 scorer = _BundleScorer(kg=kg, palace_path=self.palace_path)
                 hit_ids = [h["id"] for h in hits]
@@ -588,8 +615,7 @@ class MemoryStack:
         """按需回忆：L2"""
         return self.l2.retrieve(wing, room, n_results)
 
-    def search(self, query: str, wing: str = None, room: str = None,
-               n_results: int = 5) -> str:
+    def search(self, query: str, wing: str = None, room: str = None, n_results: int = 5) -> str:
         """深度搜索：L3"""
         return self.l3.search(query, wing, room, n_results)
 
@@ -634,4 +660,5 @@ if __name__ == "__main__":
         print(stack.recall(wing=args.wing, room=args.room, n_results=args.limit))
     elif args.command == "status":
         import json
+
         print(json.dumps(stack.status(), ensure_ascii=False, indent=2))

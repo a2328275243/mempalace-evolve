@@ -40,7 +40,7 @@ import json
 import logging
 import os
 import sqlite3
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -49,6 +49,7 @@ from collections import OrderedDict
 
 class LRUCache:
     """Simple LRU cache with TTL support."""
+
     def __init__(self, maxsize=128, ttl=60):
         self._maxsize = maxsize
         self._ttl = ttl
@@ -59,6 +60,7 @@ class LRUCache:
         if key not in self._cache:
             return None
         import time
+
         if time.time() - self._timestamps.get(key, 0) > self._ttl:
             self._cache.pop(key, None)
             self._timestamps.pop(key, None)
@@ -68,6 +70,7 @@ class LRUCache:
 
     def put(self, key, value):
         import time
+
         self._cache[key] = value
         self._timestamps[key] = time.time()
         self._cache.move_to_end(key)
@@ -88,7 +91,9 @@ class LRUCache:
 logger = logging.getLogger("mempalace.kg")
 
 
-DEFAULT_KG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "knowledge_graph.sqlite3")
+DEFAULT_KG_PATH = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "knowledge_graph.sqlite3"
+)
 
 
 class KnowledgeGraph:
@@ -99,6 +104,7 @@ class KnowledgeGraph:
         self._query_cache = LRUCache(maxsize=256, ttl=30)
         self._init_db()
         import weakref
+
         weakref.finalize(self, self.close)
 
     def close(self):
@@ -170,13 +176,12 @@ class KnowledgeGraph:
         try:
             conn.execute(
                 "INSERT INTO schema_migrations (version, name) VALUES (?, ?)",
-                (1, "add_canonical_name")
+                (1, "add_canonical_name"),
             )
         except Exception:
             pass  # 已记录
 
         conn.commit()
-
 
     @contextmanager
     def _get_conn(self):
@@ -189,6 +194,7 @@ class KnowledgeGraph:
             raise
         else:
             conn.commit()
+
     def _conn(self):
         """获取持久数据库连接。首次调用时初始化 PRAGMA，后续复用同一连接。"""
         if self._persistent_conn is not None:
@@ -249,7 +255,6 @@ class KnowledgeGraph:
         """
         eid = self._entity_id(name)
         with self._get_conn() as conn:
-
             # Delete triples where this entity is subject or object (by entity ID)
             conn.execute("DELETE FROM triples WHERE subject=? OR object=?", (eid, eid))
 
@@ -287,7 +292,9 @@ class KnowledgeGraph:
 
         # Auto-create entities if they don't exist
         with self._get_conn() as conn:
-            conn.execute("INSERT OR IGNORE INTO entities (id, name) VALUES (?, ?)", (sub_id, subject))
+            conn.execute(
+                "INSERT OR IGNORE INTO entities (id, name) VALUES (?, ?)", (sub_id, subject)
+            )
             conn.execute("INSERT OR IGNORE INTO entities (id, name) VALUES (?, ?)", (obj_id, obj))
 
             # Check for existing identical triple
@@ -297,7 +304,6 @@ class KnowledgeGraph:
             ).fetchone()
 
             if existing:
-
                 return existing[0]  # Already exists and still valid
 
             triple_id = f"t_{sub_id}_{pred}_{obj_id}_{hashlib.md5(f'{valid_from}{datetime.now(timezone.utc).isoformat()}'.encode()).hexdigest()[:8]}"
@@ -336,7 +342,6 @@ class KnowledgeGraph:
             )
             conn.commit()
 
-
             self._query_cache.invalidate()
             # ── Canonical name operations ──────────────────────────────────────────
 
@@ -350,9 +355,9 @@ class KnowledgeGraph:
             )
             conn.commit()
 
-
-    def query_entity_by_canonical(self, canonical: str, direction: str = "both",
-                                   as_of: str = None) -> list:
+    def query_entity_by_canonical(
+        self, canonical: str, direction: str = "both", as_of: str = None
+    ) -> list:
         """通过规范名查询实体关系（查询所有 canonical_name 匹配的实体，一次SQL批量化）"""
         cache_key = f"query_entity_canonical:{canonical}:{as_of}:{direction}"
         cached = self._query_cache.get(cache_key)
@@ -361,7 +366,8 @@ class KnowledgeGraph:
 
         with self._get_conn() as conn:
             matching_ids = [
-                r[0] for r in conn.execute(
+                r[0]
+                for r in conn.execute(
                     "SELECT id FROM entities WHERE canonical_name=? OR name=?",
                     (canonical, canonical),
                 ).fetchall()
@@ -384,15 +390,17 @@ class KnowledgeGraph:
                     f"WHERE t.subject IN ({placeholders}){time_filter}"
                 )
                 for row in conn.execute(q, matching_ids + time_params).fetchall():
-                    results.append({
-                        "direction": "outgoing",
-                        "subject": canonical,
-                        "predicate": row[0],
-                        "object": row[1],
-                        "valid_from": row[2],
-                        "valid_to": row[3],
-                        "current": row[3] is None,
-                    })
+                    results.append(
+                        {
+                            "direction": "outgoing",
+                            "subject": canonical,
+                            "predicate": row[0],
+                            "object": row[1],
+                            "valid_from": row[2],
+                            "valid_to": row[3],
+                            "current": row[3] is None,
+                        }
+                    )
             if direction in ("both", "incoming"):
                 q = (
                     f"SELECT e.name, t.predicate, t.valid_from, t.valid_to "
@@ -400,15 +408,17 @@ class KnowledgeGraph:
                     f"WHERE t.object IN ({placeholders}){time_filter}"
                 )
                 for row in conn.execute(q, matching_ids + time_params).fetchall():
-                    results.append({
-                        "direction": "incoming",
-                        "subject": row[0],
-                        "predicate": row[1],
-                        "object": canonical,
-                        "valid_from": row[2],
-                        "valid_to": row[3],
-                        "current": row[3] is None,
-                    })
+                    results.append(
+                        {
+                            "direction": "incoming",
+                            "subject": row[0],
+                            "predicate": row[1],
+                            "object": canonical,
+                            "valid_from": row[2],
+                            "valid_to": row[3],
+                            "current": row[3] is None,
+                        }
+                    )
 
         self._query_cache.put(cache_key, results)
         return results
@@ -416,9 +426,7 @@ class KnowledgeGraph:
     def get_all_entity_names(self) -> list:
         """获取所有实体名（含 canonical_name）"""
         with self._get_conn() as conn:
-            rows = conn.execute(
-                "SELECT name, canonical_name FROM entities"
-            ).fetchall()
+            rows = conn.execute("SELECT name, canonical_name FROM entities").fetchall()
 
             return [{"name": r[0], "canonical_name": r[1]} for r in rows]
 
@@ -438,7 +446,6 @@ class KnowledgeGraph:
 
         eid = self._entity_id(name)
         with self._get_conn() as conn:
-
             results = []
             time_filter = ""
             time_params = []
@@ -454,36 +461,39 @@ class KnowledgeGraph:
                     + time_filter
                     + " UNION ALL "
                     "SELECT 'incoming' as dir, t.*, e.name as other_name FROM triples t"
-                    " JOIN entities e ON t.subject = e.id WHERE t.object = ?"
-                    + time_filter
+                    " JOIN entities e ON t.subject = e.id WHERE t.object = ?" + time_filter
                 )
                 params = [eid] + time_params + [eid] + time_params
                 for row in conn.execute(query, params).fetchall():
                     dir_flag = row[0]
                     if dir_flag == "outgoing":
-                        results.append({
-                            "direction": "outgoing",
-                            "subject": name,
-                            "predicate": row[3],
-                            "object": row[11],
-                            "valid_from": row[5],
-                            "valid_to": row[6],
-                            "confidence": row[7],
-                            "source_closet": row[8],
-                            "current": row[6] is None,
-                        })
+                        results.append(
+                            {
+                                "direction": "outgoing",
+                                "subject": name,
+                                "predicate": row[3],
+                                "object": row[11],
+                                "valid_from": row[5],
+                                "valid_to": row[6],
+                                "confidence": row[7],
+                                "source_closet": row[8],
+                                "current": row[6] is None,
+                            }
+                        )
                     else:
-                        results.append({
-                            "direction": "incoming",
-                            "subject": row[11],
-                            "predicate": row[3],
-                            "object": name,
-                            "valid_from": row[5],
-                            "valid_to": row[6],
-                            "confidence": row[7],
-                            "source_closet": row[8],
-                            "current": row[6] is None,
-                        })
+                        results.append(
+                            {
+                                "direction": "incoming",
+                                "subject": row[11],
+                                "predicate": row[3],
+                                "object": name,
+                                "valid_from": row[5],
+                                "valid_to": row[6],
+                                "confidence": row[7],
+                                "source_closet": row[8],
+                                "current": row[6] is None,
+                            }
+                        )
             elif direction == "outgoing":
                 query = "SELECT t.*, e.name as obj_name FROM triples t JOIN entities e ON t.object = e.id WHERE t.subject = ?"
                 params = [eid]
@@ -491,17 +501,19 @@ class KnowledgeGraph:
                     query += " AND (t.valid_from IS NULL OR t.valid_from <= ?) AND (t.valid_to IS NULL OR t.valid_to >= ?)"
                     params.extend([as_of, as_of])
                 for row in conn.execute(query, params).fetchall():
-                    results.append({
-                        "direction": "outgoing",
-                        "subject": name,
-                        "predicate": row[2],
-                        "object": row[10],
-                        "valid_from": row[4],
-                        "valid_to": row[5],
-                        "confidence": row[6],
-                        "source_closet": row[7],
-                        "current": row[5] is None,
-                    })
+                    results.append(
+                        {
+                            "direction": "outgoing",
+                            "subject": name,
+                            "predicate": row[2],
+                            "object": row[10],
+                            "valid_from": row[4],
+                            "valid_to": row[5],
+                            "confidence": row[6],
+                            "source_closet": row[7],
+                            "current": row[5] is None,
+                        }
+                    )
             elif direction == "incoming":
                 query = "SELECT t.*, e.name as sub_name FROM triples t JOIN entities e ON t.subject = e.id WHERE t.object = ?"
                 params = [eid]
@@ -509,24 +521,26 @@ class KnowledgeGraph:
                     query += " AND (t.valid_from IS NULL OR t.valid_from <= ?) AND (t.valid_to IS NULL OR t.valid_to >= ?)"
                     params.extend([as_of, as_of])
                 for row in conn.execute(query, params).fetchall():
-                    results.append({
-                        "direction": "incoming",
-                        "subject": row[10],
-                        "predicate": row[2],
-                        "object": name,
-                        "valid_from": row[4],
-                        "valid_to": row[5],
-                        "confidence": row[6],
-                        "source_closet": row[7],
-                        "current": row[5] is None,
-                    })
-
+                    results.append(
+                        {
+                            "direction": "incoming",
+                            "subject": row[10],
+                            "predicate": row[2],
+                            "object": name,
+                            "valid_from": row[4],
+                            "valid_to": row[5],
+                            "confidence": row[6],
+                            "source_closet": row[7],
+                            "current": row[5] is None,
+                        }
+                    )
 
         self._query_cache.put(cache_key, results)
         return results
 
-    def batch_query_entity(self, names: list[str], as_of: str = None,
-                            direction: str = "both") -> dict[str, list]:
+    def batch_query_entity(
+        self, names: list[str], as_of: str = None, direction: str = "both"
+    ) -> dict[str, list]:
         """Batch query multiple entities in a single SQL pass.
 
         Args:
@@ -590,17 +604,19 @@ class KnowledgeGraph:
                         continue
                     if found_name not in result:
                         result[found_name] = []
-                    result[found_name].append({
-                        "direction": "outgoing",
-                        "subject": found_name,
-                        "predicate": row[1],
-                        "object": row[2],
-                        "valid_from": row[3],
-                        "valid_to": row[4],
-                        "confidence": row[5],
-                        "source_closet": row[6],
-                        "current": row[4] is None,
-                    })
+                    result[found_name].append(
+                        {
+                            "direction": "outgoing",
+                            "subject": found_name,
+                            "predicate": row[1],
+                            "object": row[2],
+                            "valid_from": row[3],
+                            "valid_to": row[4],
+                            "confidence": row[5],
+                            "source_closet": row[6],
+                            "current": row[4] is None,
+                        }
+                    )
 
             if direction in ("both", "incoming"):
                 placeholders = ",".join("?" for _ in eid_values)
@@ -622,17 +638,19 @@ class KnowledgeGraph:
                         continue
                     if found_name not in result:
                         result[found_name] = []
-                    result[found_name].append({
-                        "direction": "incoming",
-                        "subject": row[1],
-                        "predicate": row[2],
-                        "object": found_name,
-                        "valid_from": row[3],
-                        "valid_to": row[4],
-                        "confidence": row[5],
-                        "source_closet": row[6],
-                        "current": row[4] is None,
-                    })
+                    result[found_name].append(
+                        {
+                            "direction": "incoming",
+                            "subject": row[1],
+                            "predicate": row[2],
+                            "object": found_name,
+                            "valid_from": row[3],
+                            "valid_to": row[4],
+                            "confidence": row[5],
+                            "source_closet": row[6],
+                            "current": row[4] is None,
+                        }
+                    )
 
         for name in missed:
             if name not in result:
@@ -700,7 +718,6 @@ class KnowledgeGraph:
                     LIMIT 100
                 """).fetchall()
 
-
             return [
                 {
                     "subject": r[10],
@@ -760,10 +777,9 @@ class KnowledgeGraph:
             List of matching entities with name, type, and similarity.
         """
         from difflib import SequenceMatcher
+
         with self._get_conn() as conn:
-            rows = conn.execute(
-                "SELECT name, type, properties FROM entities"
-            ).fetchall()
+            rows = conn.execute("SELECT name, type, properties FROM entities").fetchall()
         matches = []
         for row in rows:
             ename = row[0]
@@ -771,7 +787,11 @@ class KnowledgeGraph:
                 matches.append({"name": ename, "type": row[1], "similarity": 1.0})
                 continue
             if name.lower() in ename.lower() or ename.lower() in name.lower():
-                ratio = len(name) / max(len(ename), 1) if len(ename) >= len(name) else len(ename) / max(len(name), 1)
+                ratio = (
+                    len(name) / max(len(ename), 1)
+                    if len(ename) >= len(name)
+                    else len(ename) / max(len(name), 1)
+                )
                 matches.append({"name": ename, "type": row[1], "similarity": round(ratio, 3)})
                 continue
             ratio = SequenceMatcher(None, name.lower(), ename.lower()).ratio()
@@ -780,7 +800,9 @@ class KnowledgeGraph:
         matches.sort(key=lambda x: x["similarity"], reverse=True)
         return matches
 
-    def graph_traverse(self, start_entity: str, max_depth: int = 2, direction: str = "both") -> list[dict]:
+    def graph_traverse(
+        self, start_entity: str, max_depth: int = 2, direction: str = "both"
+    ) -> list[dict]:
         """Traverse the knowledge graph from a starting entity using BFS.
         Returns edges found at each depth level.
         Args:
@@ -804,26 +826,29 @@ class KnowledgeGraph:
                 if direction in ("outgoing", "both"):
                     for rel in self.query_entity(entity, direction="outgoing"):
                         if rel.get("current", True):
-                            edges.append({
-                                "depth": depth + 1,
-                                "subject": entity,
-                                "predicate": rel["predicate"],
-                                "object": rel["object"],
-                            })
+                            edges.append(
+                                {
+                                    "depth": depth + 1,
+                                    "subject": entity,
+                                    "predicate": rel["predicate"],
+                                    "object": rel["object"],
+                                }
+                            )
                             next_level.add(rel["object"])
                 if direction in ("incoming", "both"):
                     for rel in self.query_entity(entity, direction="incoming"):
                         if rel.get("current", True):
-                            edges.append({
-                                "depth": depth + 1,
-                                "subject": rel["subject"],
-                                "predicate": rel["predicate"],
-                                "object": entity,
-                            })
+                            edges.append(
+                                {
+                                    "depth": depth + 1,
+                                    "subject": rel["subject"],
+                                    "predicate": rel["predicate"],
+                                    "object": entity,
+                                }
+                            )
                             next_level.add(rel["subject"])
             current_level = next_level - visited_entities
         return edges
-
 
     def batch_query_entities(self, names, as_of=None, direction="outgoing"):
         """Query multiple entities in a single SQL pass.
@@ -880,17 +905,19 @@ class KnowledgeGraph:
                         continue
                     if name_val_found not in result:
                         result[name_val_found] = []
-                    result[name_val_found].append({
-                        "direction": "outgoing",
-                        "subject": name_val_found,
-                        "predicate": row[3],
-                        "object": row[12],
-                        "valid_from": row[5],
-                        "valid_to": row[6],
-                        "confidence": row[7],
-                        "source_closet": row[8],
-                        "current": row[6] is None,
-                    })
+                    result[name_val_found].append(
+                        {
+                            "direction": "outgoing",
+                            "subject": name_val_found,
+                            "predicate": row[3],
+                            "object": row[12],
+                            "valid_from": row[5],
+                            "valid_to": row[6],
+                            "confidence": row[7],
+                            "source_closet": row[8],
+                            "current": row[6] is None,
+                        }
+                    )
 
             if direction in ("both", "incoming"):
                 placeholders = ",".join("?" for _ in eid_map.values())
@@ -911,17 +938,19 @@ class KnowledgeGraph:
                         continue
                     if name_val_found not in result:
                         result[name_val_found] = []
-                    result[name_val_found].append({
-                        "direction": "incoming",
-                        "subject": row[12],
-                        "predicate": row[3],
-                        "object": name_val_found,
-                        "valid_from": row[5],
-                        "valid_to": row[6],
-                        "confidence": row[7],
-                        "source_closet": row[8],
-                        "current": row[6] is None,
-                    })
+                    result[name_val_found].append(
+                        {
+                            "direction": "incoming",
+                            "subject": row[12],
+                            "predicate": row[3],
+                            "object": name_val_found,
+                            "valid_from": row[5],
+                            "valid_to": row[6],
+                            "confidence": row[7],
+                            "source_closet": row[8],
+                            "current": row[6] is None,
+                        }
+                    )
 
         for name in missed:
             if name not in result:
@@ -936,9 +965,7 @@ class KnowledgeGraph:
     def stats(self):
         with self._get_conn() as conn:
             # 合并 3 次 COUNT 为单次查询
-            row = conn.execute(
-                "SELECT COUNT(*) FROM entities;"
-            ).fetchone()
+            row = conn.execute("SELECT COUNT(*) FROM entities;").fetchone()
             entities = row[0]
             row = conn.execute(
                 "SELECT COUNT(*) as total, COALESCE(SUM(CASE WHEN valid_to IS NULL THEN 1 ELSE 0 END), 0) as current FROM triples"
@@ -960,9 +987,6 @@ class KnowledgeGraph:
                 "expired_facts": expired,
                 "relationship_types": predicates,
             }
-
-
-
 
     def query_path(self, start_entity: str, end_entity: str, max_depth: int = 4) -> list[dict]:
         """Shortest path between two entities using BFS."""
@@ -1022,22 +1046,34 @@ class KnowledgeGraph:
                 "FROM triples t JOIN entities o ON t.object = o.id WHERE t.subject = ?" + tf,
                 [eid] + tp,
             ).fetchall():
-                result["outgoing"].append({
-                    "subject": name, "predicate": row[0], "object": row[1],
-                    "valid_from": row[2], "valid_to": row[3], "confidence": row[4],
-                    "source_closet": row[5], "current": row[3] is None,
-                })
+                result["outgoing"].append(
+                    {
+                        "subject": name,
+                        "predicate": row[0],
+                        "object": row[1],
+                        "valid_from": row[2],
+                        "valid_to": row[3],
+                        "confidence": row[4],
+                        "source_closet": row[5],
+                        "current": row[3] is None,
+                    }
+                )
             for row in conn.execute(
                 "SELECT s.name as sub_name, t.predicate, t.valid_from, t.valid_to, t.confidence, t.source_closet "
                 "FROM triples t JOIN entities s ON t.subject = s.id WHERE t.object = ?" + tf,
                 [eid] + tp,
             ).fetchall():
-                result["incoming"].append({
-                    "subject": row[0], "predicate": row[1], "object": name,
-                    "valid_from": row[2], "valid_to": row[3], "confidence": row[4],
-                    "source_closet": row[5], "current": row[3] is None,
-                })
+                result["incoming"].append(
+                    {
+                        "subject": row[0],
+                        "predicate": row[1],
+                        "object": name,
+                        "valid_from": row[2],
+                        "valid_to": row[3],
+                        "confidence": row[4],
+                        "source_closet": row[5],
+                        "current": row[3] is None,
+                    }
+                )
         self._query_cache.put(cache_key, result)
         return result
-
-

@@ -16,8 +16,10 @@ MemPalace Evolve repository with integrated DreamSeed Code terminal agent. Remot
 - Latest import/export parity pass fixed `import_memories()` so list/file/wrapper imports preserve `source`/`source_file`, `ttl`, and `tags` alongside metadata, preventing governance fields from being dropped during memory migration.
 - Latest export fidelity pass made JSON export include complete memory metadata plus top-level `source_file`, enabling export/import round-trips to preserve provenance, tags, TTL-derived `expire_at`, and custom metadata.
 - Latest REST batch parity pass added `/remember/batch` and `/recall/batch`, forwarding to the typed SDK batch methods and verifying batch metadata/TTL/tag persistence plus room-filtered batch recall.
+- Latest MCP/async batch parity pass added MCP `batch_remember`, `batch_recall`, and `batch_forget` tools, and fixed AsyncMemPalace batch/recall wrappers so threshold/hybrid parameters align with the sync SDK without passing unsupported keywords.
+- Latest CI hardening pass made the full `src/` tree pass the repository's GitHub Actions ruff check and ruff format gates, then verified the package with coverage tests, doctor/import smoke checks, build, and twine metadata validation.
 - Desktop/Electron installers and old v0.1.1 release artifacts were removed from source. Current release is `dreamseed-code-v0.2.0`.
-- Latest pushed MemPalace code commit before the current in-progress pass: `a84f3a0` (`Preserve full metadata in JSON export`).
+- Latest pushed MemPalace code commit before the current in-progress pass: `2c7bb85` (`Add REST batch memory endpoints`).
 - Local uncommitted Lite Kernel productization changes are in `bin/dreamseed-lite-kernel.js`: native DreamSeed history management, richer slash commands, MultiEdit, tool progress streaming, MCP Content-Length framing and HTTP JSON-RPC support, segmented compact summaries, skill detail loading, safer shell fallback, and tool change previews.
 - Terminal UI5 changes are now committed, pushed, packaged, and uploaded: polished box-drawing terminal UI, `/` command palette, Up/Down selection, Tab completion, Enter-to-run selected prefix match, right-bounded assistant reply blocks, tool running/done/error rows, approval/info/status blocks, queued MCP notices, Unicode-width-aware Chinese text layout, and scripted-input smoke support.
 - GitHub release `dreamseed-code-v0.2.0` now has assets:
@@ -54,9 +56,17 @@ MemPalace Evolve repository with integrated DreamSeed Code terminal agent. Remot
 - Terminal UI is improved but still the main product-polish track: next refinements could make `/resume` interactive with arrow navigation, improve tool-result collapse/expand, and make approval prompts more like Claude Code/Codex terminal UX.
 
 ## Next Step
-Continue code/system optimization with another focused pass: inspect batch operation surfaces, MCP/OpenAI batch parity, or terminal-agent runtime polish, then run full tests before any push.
+Continue code/system optimization with another focused pass: inspect OpenAI/LangChain batch parity tradeoffs, typed model coverage, or terminal-agent runtime polish; before uploading, rerun the GitHub Actions-equivalent lint, format, full coverage tests, doctor/import smoke, build, and twine checks.
 
 ## Session Log
+
+### 2026-07-10 10:28
+- User asked: continue sustained optimization toward the repo goal, focusing only on code/system quality and preserving the full-test-before-upload rule.
+- Work completed: researched current memory-system directions emphasizing stable retrieval, batch throughput, and consistent entry points; audited MCP and async batch surfaces after REST batch parity; added MCP `batch_remember`, `batch_recall`, and `batch_forget` tools with Pydantic-result JSON serialization; fixed `AsyncMemPalace.batch_remember()` so it no longer forwards an unsupported `room` keyword; added async `threshold`/`hybrid` forwarding for recall paths and `threshold` forwarding for `batch_recall()`; made async `recall_stream()` return a realized list instead of leaking the sync generator; found that GitHub Actions would fail on existing ruff lint/format gates, so formatted `src/` with the repo's configured formatter and cleaned remaining lint issues without changing behavior.
+- Files touched: `src/mempalace_evolve/` source files via ruff format/lint cleanup, `src/mempalace_evolve/adapters/mcp_server.py`, `src/mempalace_evolve/async_sdk.py`, `tests/test_adapters.py`, `tests/test_async_sdk.py`, `.codex-project/PROJECT_MEMORY.md`; pre-existing `README.md` example change remains unstaged.
+- Verification: targeted `tests/test_adapters.py tests/test_async_sdk.py tests/test_batch_ops.py` passed `68 passed, 9 skipped, 1 warning`; full suite passed `655 passed, 9 skipped, 1 warning`; GitHub Actions-equivalent coverage run passed `655 passed, 9 skipped, 1 warning` with `coverage.xml`; `ruff check src/` passed; `ruff format --check src/` passed; import smoke passed for package and SDK; `python -m mempalace_evolve.cli doctor` passed `4/4`; package build passed with local `--no-isolation` after installing build metadata tools into `.venv`; `twine check dist/*` passed; `git diff --check` passed with CRLF warnings only; generated-file scan for adaptive baselines/sqlite artifacts returned no source/test pollution.
+- Result: MCP clients can now use high-throughput batch memory operations, async users get parameter behavior aligned with the synchronous SDK, and the repository now satisfies the CI lint/format/build/test gates that would otherwise fail on GitHub.
+- Next suggested move: stage only this code/system pass and memory log, confirm `README.md` is not staged, then commit and push if clean.
 
 ### 2026-07-10 10:02
 - User asked: continue sustained optimization toward the repo goal, focusing only on code/system quality and preserving the full-test-before-upload rule.

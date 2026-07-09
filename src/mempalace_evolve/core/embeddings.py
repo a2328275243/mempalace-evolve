@@ -11,7 +11,7 @@ import os
 import re
 import threading
 import time as _time
-from typing import Any, Dict, Sequence, cast
+from typing import Any
 
 logger = logging.getLogger("mempalace.embeddings")
 
@@ -69,6 +69,7 @@ class CachedEmbeddingFunction:
                 return
             try:
                 from chromadb.utils.embedding_functions import ONNXMiniLM_L6_V2
+
                 t0 = _time.time()
                 self._onnx_ef = ONNXMiniLM_L6_V2()
                 self._load_time = _time.time() - t0

@@ -30,21 +30,25 @@ def create_mcp_server(palace_path: str | None = None, wing: str = "global"):
         from fastmcp import FastMCP
     except ImportError:
         raise ImportError(
-            "MCP adapter requires fastmcp. Install with: "
-            "pip install mempalace-evolve[mcp]"
+            "MCP adapter requires fastmcp. Install with: pip install mempalace-evolve[mcp]"
         )
 
     from mempalace_evolve.sdk import MemPalace
 
     if palace_path is None:
-        palace_path = os.environ.get(
-            "MEMPALACE_PATH", str(Path.home() / ".mempalace")
-        )
+        palace_path = os.environ.get("MEMPALACE_PATH", str(Path.home() / ".mempalace"))
     wing = os.environ.get("MEMPALACE_WING", wing)
 
     palace = MemPalace(palace_path, wing=wing)
     _write_lock = threading.Lock()
     mcp = FastMCP("mempalace")
+
+    def _dump_result(result: Any) -> str:
+        if hasattr(result, "model_dump"):
+            result = result.model_dump()
+        elif hasattr(result, "dict"):
+            result = result.dict()
+        return json.dumps(result, ensure_ascii=False, default=str)
 
     @mcp.tool()
     def remember(
@@ -96,12 +100,49 @@ def create_mcp_server(palace_path: str | None = None, wing: str = "global"):
             return json.dumps({"results": [], "message": "No relevant memories found"})
         output = []
         for r in results:
-            output.append({
-                "content": r["content"],
-                "room": r.get("metadata", {}).get("room", ""),
-                "distance": round(r.get("distance", 0), 4),
-            })
+            output.append(
+                {
+                    "content": r["content"],
+                    "room": r.get("metadata", {}).get("room", ""),
+                    "distance": round(r.get("distance", 0), 4),
+                }
+            )
         return json.dumps({"results": output, "count": len(output)}, ensure_ascii=False)
+
+    @mcp.tool()
+    def batch_remember(memories: list[dict[str, Any]]) -> str:
+        """Store multiple memories in a single batch operation.
+
+        Args:
+            memories: List of memory objects with content, room, metadata,
+                source, ttl, and tags fields.
+        """
+        with _write_lock:
+            result = palace.batch_remember(memories)
+        return _dump_result(result)
+
+    @mcp.tool()
+    def batch_recall(
+        queries: list[str],
+        limit: int = 3,
+        room: str | None = None,
+        threshold: float = 0.8,
+    ) -> str:
+        """Recall memories for multiple queries in one tool call.
+
+        Args:
+            queries: Natural language search queries.
+            limit: Max results per query.
+            room: Optional room/category filter.
+            threshold: Max distance, lower is more similar.
+        """
+        result = palace.batch_recall(
+            queries,
+            limit=limit,
+            room=room,
+            threshold=threshold,
+        )
+        return _dump_result(result)
 
     @mcp.tool()
     def add_fact(subject: str, predicate: str, object: str) -> str:
@@ -154,7 +195,9 @@ def create_mcp_server(palace_path: str | None = None, wing: str = "global"):
         return json.dumps({"path": path, "length": len(path)}, ensure_ascii=False, default=str)
 
     @mcp.tool()
-    def recall_stream(query: str, limit: int = 5, room: str = "", threshold: float = 0.8, hybrid: bool = True) -> str:
+    def recall_stream(
+        query: str, limit: int = 5, room: str = "", threshold: float = 0.8, hybrid: bool = True
+    ) -> str:
         """Stream recall results as a generator (returned as a list).
 
         Same semantics as recall(), but yields results one-by-one with
@@ -167,12 +210,15 @@ def create_mcp_server(palace_path: str | None = None, wing: str = "global"):
             threshold: Max distance (0-1, lower = more similar).
             hybrid: If True, expand via KG relationships.
         """
-        results = list(palace.recall_stream(
-            query, limit=limit,
-            room=room or None,
-            threshold=threshold,
-            hybrid=hybrid,
-        ))
+        results = list(
+            palace.recall_stream(
+                query,
+                limit=limit,
+                room=room or None,
+                threshold=threshold,
+                hybrid=hybrid,
+            )
+        )
         output = []
         for r in results:
             item = {
@@ -195,6 +241,17 @@ def create_mcp_server(palace_path: str | None = None, wing: str = "global"):
         with _write_lock:
             ok = palace.forget(memory_id)
         return json.dumps({"deleted": ok, "id": memory_id})
+
+    @mcp.tool()
+    def batch_forget(memory_ids: list[str]) -> str:
+        """Delete multiple memories in a single batch operation.
+
+        Args:
+            memory_ids: Drawer IDs returned by remember() or batch_remember().
+        """
+        with _write_lock:
+            result = palace.batch_forget(memory_ids)
+        return _dump_result(result)
 
     @mcp.tool()
     def purge_expired(ttl_days: int = 90, ttl_summary_days: int = 180) -> str:

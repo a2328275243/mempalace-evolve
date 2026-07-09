@@ -18,9 +18,7 @@ from pathlib import Path
 from typing import Any, Self
 from mempalace_evolve.advanced_query import AdvancedQuery
 from mempalace_evolve.models import (
-    BatchRememberInput,
     BatchRememberResult,
-    BatchRecallInput,
     BatchRecallResult,
     BatchForgetResult,
 )
@@ -29,8 +27,8 @@ from mempalace_evolve.models import (
 logger = logging.getLogger("mempalace_evolve")
 
 # Memory type constants
-SEMANTIC = "semantic"      # Facts, configs, decisions (project-scoped)
-EPISODIC = "episodic"      # Specific events, conversations (project-scoped)
+SEMANTIC = "semantic"  # Facts, configs, decisions (project-scoped)
+EPISODIC = "episodic"  # Specific events, conversations (project-scoped)
 PROCEDURAL = "procedural"  # Experiences, patterns, lessons (globally shared)
 
 # Room → memory type mapping (auto-classification)
@@ -40,7 +38,7 @@ _ROOM_TYPE_MAP = {
     "architecture": SEMANTIC,
     "project": SEMANTIC,
     "preferences": SEMANTIC,
-    "errors": PROCEDURAL,       # Error patterns are transferable
+    "errors": PROCEDURAL,  # Error patterns are transferable
     "error_patterns": PROCEDURAL,
     "daily_summaries": EPISODIC,
     "progress": EPISODIC,
@@ -55,11 +53,15 @@ class MemPalace:
     managing knowledge graphs, and running evolution pipelines.
     """
 
-    def __init__(self, palace_path: str | Path = None, wing: str = "global",
-                 auto_evolve: bool = False, evolve_interval: int = 3600,
-                 llm_enabled: bool | None = None,
-                 scoring_config: dict[str, Any] | None = None):
-
+    def __init__(
+        self,
+        palace_path: str | Path = None,
+        wing: str = "global",
+        auto_evolve: bool = False,
+        evolve_interval: int = 3600,
+        llm_enabled: bool | None = None,
+        scoring_config: dict[str, Any] | None = None,
+    ):
         """Initialize a MemPalace instance.
         Args:
             palace_path: Path to the palace directory. Defaults to ~/.mempalace
@@ -187,7 +189,13 @@ class MemPalace:
         if collection is not None:
             try:
                 existing = collection.get(
-                    where={"$and": [{"wing": self._wing}, {"room": room}, {"content_hash": content_hash}]},
+                    where={
+                        "$and": [
+                            {"wing": self._wing},
+                            {"room": room},
+                            {"content_hash": content_hash},
+                        ]
+                    },
                     include=["documents"],
                     limit=1,
                 )
@@ -196,7 +204,6 @@ class MemPalace:
                     return existing["ids"][0]
             except Exception as _e:
                 logger.debug("Dedup check failed: %s", _e)
-
 
         if collection is None:
             raise StorageError("Failed to initialize ChromaDB collection")
@@ -220,6 +227,7 @@ class MemPalace:
         dedup_threshold = self._scoring_config.get("dedup_threshold", 0.85)
         if dedup_threshold > 0:
             from mempalace_evolve.core.dedup import check_and_deduplicate
+
             dedup_result = check_and_deduplicate(
                 collection=collection,
                 wing=self._wing,
@@ -229,18 +237,19 @@ class MemPalace:
                 action=self._scoring_config.get("dedup_action", "skip"),
             )
             if dedup_result["action"] == "skip":
-                logger.info("Skipped duplicate memory (similarity: %.2f)", dedup_result["similar"][0]["similarity"])
+                logger.info(
+                    "Skipped duplicate memory (similarity: %.2f)",
+                    dedup_result["similar"][0]["similarity"],
+                )
                 # Return existing ID, no need to store
                 return dedup_result["matched_id"]
             elif dedup_result["action"] == "merge":
                 # Merge similar content into existing memory
                 from mempalace_evolve.core.dedup import merge_similar_content
+
                 existing_content = dedup_result["matched_content"]
                 merged_content = merge_similar_content(existing_content, content)
-                collection.update(
-                    ids=[dedup_result["matched_id"]],
-                    documents=[merged_content]
-                )
+                collection.update(ids=[dedup_result["matched_id"]], documents=[merged_content])
                 logger.info("Merged duplicate memory into %s", dedup_result["matched_id"])
                 # Update metadata recall_count, etc.
                 return dedup_result["matched_id"]
@@ -276,6 +285,7 @@ class MemPalace:
             List of memory dicts due for review.
         """
         from mempalace_evolve.core.spaced_repetition import get_memories_due_for_review
+
         collection = self._get_collection()
         if not collection:
             return []
@@ -291,6 +301,7 @@ class MemPalace:
             True if successful.
         """
         from mempalace_evolve.core.spaced_repetition import mark_reviewed
+
         collection = self._get_collection()
         if not collection:
             return False
@@ -317,6 +328,7 @@ class MemPalace:
             True if successful.
         """
         from mempalace_evolve.core.spaced_repetition import snooze
+
         collection = self._get_collection()
         if not collection:
             return False
@@ -329,6 +341,7 @@ class MemPalace:
             Dict with scoring results.
         """
         from mempalace_evolve.core.importance_scorer import score_all_memories
+
         return score_all_memories(self)
 
     def top_memories(self, n: int = 10) -> list[dict]:
@@ -341,9 +354,12 @@ class MemPalace:
             List of top memory dicts.
         """
         from mempalace_evolve.core.importance_scorer import get_top_memories
+
         return get_top_memories(self, n)
 
-    def find_similar(self, content: str, room: str | None = None, threshold: float = 0.85) -> list[dict]:
+    def find_similar(
+        self, content: str, room: str | None = None, threshold: float = 0.85
+    ) -> list[dict]:
         """Find similar memories to the given content.
 
         Args:
@@ -355,6 +371,7 @@ class MemPalace:
             List of similar memory dicts.
         """
         from mempalace_evolve.core.dedup import find_similar_memories
+
         collection = self._get_collection()
         if not collection:
             return []
@@ -418,7 +435,9 @@ class MemPalace:
 
         try:
             results = collection.query(
-                query_texts=[query], n_results=limit * 2, where=where_wing,
+                query_texts=[query],
+                n_results=limit * 2,
+                where=where_wing,
             )
             if results and results.get("documents"):
                 docs = results["documents"][0]
@@ -428,10 +447,14 @@ class MemPalace:
                 for doc, meta, dist, did in zip(docs, metas, dists, ids):
                     if dist <= threshold:
                         score = self._compute_recall_score(dist, meta)
-                        output.append({
-                            "content": doc, "metadata": meta,
-                            "distance": dist, "_score": score,
-                        })
+                        output.append(
+                            {
+                                "content": doc,
+                                "metadata": meta,
+                                "distance": dist,
+                                "_score": score,
+                            }
+                        )
                         seen_ids.add(did)
         except Exception as e:
             logger.warning("Wing recall failed: %s", e)
@@ -440,12 +463,22 @@ class MemPalace:
         try:
             proc_where = {"memory_type": PROCEDURAL}
             proc_results = collection.query(
-                query_texts=[query], n_results=limit, where=proc_where,
+                query_texts=[query],
+                n_results=limit,
+                where=proc_where,
             )
             if proc_results and proc_results.get("documents"):
                 p_docs = proc_results["documents"][0]
-                p_metas = proc_results["metadatas"][0] if proc_results.get("metadatas") else [{}] * len(p_docs)
-                p_dists = proc_results["distances"][0] if proc_results.get("distances") else [0.0] * len(p_docs)
+                p_metas = (
+                    proc_results["metadatas"][0]
+                    if proc_results.get("metadatas")
+                    else [{}] * len(p_docs)
+                )
+                p_dists = (
+                    proc_results["distances"][0]
+                    if proc_results.get("distances")
+                    else [0.0] * len(p_docs)
+                )
                 p_ids = proc_results["ids"][0] if proc_results.get("ids") else []
                 for doc, meta, dist, did in zip(p_docs, p_metas, p_dists, p_ids):
                     if dist <= threshold and did not in seen_ids:
@@ -453,11 +486,15 @@ class MemPalace:
                         if meta.get("wing") != self._wing:
                             self._track_cross_wing_hit(collection, did, meta)
                         score = self._compute_recall_score(dist, meta)
-                        output.append({
-                            "content": doc, "metadata": meta,
-                            "distance": dist, "_score": score,
-                            "source": "procedural_global",
-                        })
+                        output.append(
+                            {
+                                "content": doc,
+                                "metadata": meta,
+                                "distance": dist,
+                                "_score": score,
+                                "source": "procedural_global",
+                            }
+                        )
                         seen_ids.add(did)
         except Exception as _e:
             logger.debug("Procedural search failed: %s", _e)
@@ -467,6 +504,7 @@ class MemPalace:
             recalled_ids = list(seen_ids)[:limit]
             try:
                 from mempalace_evolve.core.lifecycle import touch_drawers
+
                 touch_drawers(collection, recalled_ids)
             except Exception as _e:
                 logger.debug("Touch-drawers failed", exc_info=_e)
@@ -531,8 +569,7 @@ class MemPalace:
         # Importance
         importance = 0.5
         try:
-            importance = float(meta.get("enhanced_importance",
-                              meta.get("importance", 0.5)))
+            importance = float(meta.get("enhanced_importance", meta.get("importance", 0.5)))
         except (ValueError, TypeError):
             pass
 
@@ -549,8 +586,7 @@ class MemPalace:
 
         return round(score, 4)
 
-    def _handle_contradiction(self, collection, new_content: str, room: str,
-                              new_meta: dict):
+    def _handle_contradiction(self, collection, new_content: str, room: str, new_meta: dict):
         """Detect and handle contradictions with existing memories.
 
         When a new semantic memory (decisions/config) is stored, check if
@@ -563,7 +599,9 @@ class MemPalace:
         try:
             where = {"$and": [{"wing": self._wing}, {"room": room}]}
             existing = collection.query(
-                query_texts=[new_content], n_results=3, where=where,
+                query_texts=[new_content],
+                n_results=3,
+                where=where,
             )
             if not existing or not existing.get("documents"):
                 return
@@ -610,8 +648,7 @@ class MemPalace:
 
         if isinstance(conversation, list):
             transcript = "\n".join(
-                f"{m.get('role', 'user')}: {m.get('content', '')}"
-                for m in conversation
+                f"{m.get('role', 'user')}: {m.get('content', '')}" for m in conversation
             )
         else:
             transcript = conversation
@@ -623,7 +660,8 @@ class MemPalace:
         for c in candidates:
             room = c.get("type", "general")
             drawer_id = self.remember(
-                c["content"], room=room,
+                c["content"],
+                room=room,
                 metadata={"score": c["score"], "source": "digest"},
             )
             stored.append({"id": drawer_id, "type": room, "score": c["score"]})
@@ -806,7 +844,9 @@ class MemPalace:
         kg = self._get_kg()
         return kg.find_entity_by_fuzzy(name, threshold=threshold)
 
-    def graph_traverse(self, start_entity: str, max_depth: int = 2, direction: str = "both") -> list[dict]:
+    def graph_traverse(
+        self, start_entity: str, max_depth: int = 2, direction: str = "both"
+    ) -> list[dict]:
         """Traverse the knowledge graph from a starting entity using BFS.
 
         Args:
@@ -833,6 +873,7 @@ class MemPalace:
         """Query knowledge graph for entity relationships."""
         kg = self._get_kg()
         return kg.query_entity(entity, direction=direction)
+
     def query_entity_v2(self, entity: str, as_of: str = None) -> dict:
         """Query knowledge graph returning structured result with separate incoming/outgoing lists.
 
@@ -860,8 +901,15 @@ class MemPalace:
         kg = self._get_kg()
         return kg.query_path(start_entity, end_entity, max_depth=max_depth)
 
-    def recall_stream(self, query: str, *, limit: int = 5, room: str | None = None,
-                     threshold: float = 0.8, hybrid: bool = True):
+    def recall_stream(
+        self,
+        query: str,
+        *,
+        limit: int = 5,
+        room: str | None = None,
+        threshold: float = 0.8,
+        hybrid: bool = True,
+    ):
         """Stream recall results as a generator.
 
         Same semantics as recall(), but yields results one-by-one instead of
@@ -877,16 +925,16 @@ class MemPalace:
         Yields:
             Dict with content, metadata, distance, _score, source.
         """
-        results = self.recall(query, limit=limit, room=room,
-                              threshold=threshold, hybrid=hybrid)
+        results = self.recall(query, limit=limit, room=room, threshold=threshold, hybrid=hybrid)
         total = len(results)
         for i, item in enumerate(results):
             if i > 0:
-                item['_stream_meta'] = {
-                    'index': i, 'total': total, 'is_last': i == total - 1,
+                item["_stream_meta"] = {
+                    "index": i,
+                    "total": total,
+                    "is_last": i == total - 1,
                 }
             yield item
-
 
     # ------------------------------------------------------------------
     # Evolution Pipeline
@@ -921,8 +969,11 @@ class MemPalace:
             collection = self._get_collection()
             if collection and collection.count() > 1:
                 from mempalace_evolve.core.consolidation import (
-                    get_today_drawers, identify_duplicates, merge_similar_drawers,
+                    get_today_drawers,
+                    identify_duplicates,
+                    merge_similar_drawers,
                 )
+
                 today = get_today_drawers(collection, wing=self._wing)
                 if today:
                     dupes = identify_duplicates(today)
@@ -937,6 +988,7 @@ class MemPalace:
             collection = self._get_collection()
             if collection and collection.count() > 10:
                 from mempalace_evolve.core.lifecycle import find_compress_candidates
+
                 candidates = find_compress_candidates(collection, compress_after_days=60)
                 compress_count = sum(len(v) for v in candidates.values())
                 if compress_count > 0:
@@ -951,11 +1003,11 @@ class MemPalace:
                 from mempalace_evolve.evolution.opportunistic import (
                     run_opportunistic_evolve,
                 )
+
                 # Apply per-room never_delete protection
                 rooms_config = self._scoring_config.get("rooms", {})
                 protected_rooms = [
-                    r for r, cfg in rooms_config.items()
-                    if cfg.get("never_delete", False)
+                    r for r, cfg in rooms_config.items() if cfg.get("never_delete", False)
                 ]
 
                 opp = run_opportunistic_evolve(
@@ -980,7 +1032,6 @@ class MemPalace:
     # Internals
     # ------------------------------------------------------------------
 
-
     # ------------------------------------------------------------------
     # Lifecycle management (TTL, compression, consolidation)
     # ------------------------------------------------------------------
@@ -988,10 +1039,13 @@ class MemPalace:
     def purge_expired(self, ttl_days: int = 90, ttl_summary_days: int = 180) -> dict:
         """Purge expired (TTL) memories from the palace."""
         from mempalace_evolve.core.lifecycle import find_ttl_expired, purge_expired as _pe
+
         collection = self._get_collection()
         if not collection:
             return {"purged": 0, "purged_ids": []}
-        expired = find_ttl_expired(collection, ttl_days=ttl_days, ttl_summary_days=ttl_summary_days, wing=self._wing)
+        expired = find_ttl_expired(
+            collection, ttl_days=ttl_days, ttl_summary_days=ttl_summary_days, wing=self._wing
+        )
         ids = [item.get("id", "") for item in expired if isinstance(item, dict)]
         if not ids:
             return {"purged": 0, "purged_ids": []}
@@ -1002,6 +1056,7 @@ class MemPalace:
     def compress_old_memories(self, compress_after_days: int = 60, max_chars: int = 800) -> dict:
         """Compress old, unused memories into shorter summaries."""
         from mempalace_evolve.core.lifecycle import find_compress_candidates, compress_candidates
+
         collection = self._get_collection()
         if not collection:
             return {"candidates": 0, "compressed": 0}
@@ -1017,21 +1072,24 @@ class MemPalace:
             metadata={"hnsw:space": "cosine"},
             embedding_function=get_cached_ef(),
         )
-        result = compress_candidates(collection, candidates, archive_col, max_summary_chars=max_chars)
+        result = compress_candidates(
+            collection, candidates, archive_col, max_summary_chars=max_chars
+        )
         return result
 
     def consolidate(self, dry_run: bool = False) -> dict:
         """Run daily consolidation: deduplicate and merge similar memories."""
         from mempalace_evolve.core.consolidation import consolidate_daily
+
         return consolidate_daily(wing=self._wing, dry_run=dry_run)
 
-    
     # ——— stats / introspection ———————————————————————————————————————
 
     def count_memories(self) -> int:
         """Count total memories in this palace wing."""
         try:
             from mempalace_evolve.core.chroma_helper import get_all_metadata
+
             collection = self._get_collection()
             if not collection:
                 return 0
@@ -1044,6 +1102,7 @@ class MemPalace:
         """List all distinct rooms used in this palace wing."""
         try:
             from mempalace_evolve.core.chroma_helper import get_all_metadata
+
             collection = self._get_collection()
             if not collection:
                 return []
@@ -1061,6 +1120,7 @@ class MemPalace:
         """Count total knowledge graph triples."""
         try:
             from mempalace_evolve.core.knowledge_graph import KnowledgeGraph
+
             kg = KnowledgeGraph()
             conn = kg._conn()
             row = conn.execute("SELECT COUNT(*) FROM triples").fetchone()
@@ -1079,6 +1139,7 @@ class MemPalace:
         """Lazily-loaded ChromaDB collection. Cached after first access."""
         if self._chroma is None:
             from mempalace_evolve.core.chroma_helper import get_collection
+
             self._chroma = get_collection(str(self._path / "palace"), create=True)
         return self._chroma
 
@@ -1102,11 +1163,10 @@ class MemPalace:
         _ = self._collection
         _ = self._kg_store
 
-
-
     def _extract_triples(self, candidates: list[dict]) -> list[tuple[str, str, str]]:
         """Extract subject-predicate-object triples from candidates using patterns."""
         import re
+
         triples = []
         patterns = [
             # "X uses Y", "X 使用 Y"
@@ -1150,11 +1210,12 @@ class MemPalace:
 
         # Extract entity names from result content (simple: use words > 3 chars)
         import re
+
         entities = set()
         for r in results[:3]:  # Only expand from top 3
             content = r.get("content", "")
             # Extract capitalized words and Chinese terms
-            words = re.findall(r'[A-Z][a-z]+(?:[A-Z][a-z]+)*|\b\w{4,}\b', content)
+            words = re.findall(r"[A-Z][a-z]+(?:[A-Z][a-z]+)*|\b\w{4,}\b", content)
             entities.update(w for w in words[:5])
 
         if not entities:
@@ -1185,12 +1246,14 @@ class MemPalace:
             if fetched and fetched.get("documents"):
                 for doc, meta in zip(fetched["documents"], fetched["metadatas"]):
                     if meta.get("wing") == self._wing:
-                        extra.append({
-                            "content": doc,
-                            "metadata": meta,
-                            "distance": -1,  # KG-expanded, no vector distance
-                            "source": "kg_expansion",
-                        })
+                        extra.append(
+                            {
+                                "content": doc,
+                                "metadata": meta,
+                                "distance": -1,  # KG-expanded, no vector distance
+                                "source": "kg_expansion",
+                            }
+                        )
         except Exception as _e:
             logger.debug("Silent exception", exc_info=_e)
 
@@ -1201,6 +1264,7 @@ class MemPalace:
         """Lazily-loaded knowledge graph. Cached after first access."""
         if self._kg is None:
             from mempalace_evolve.core.knowledge_graph import KnowledgeGraph
+
             self._kg = KnowledgeGraph(str(self._path / "knowledge_graph.sqlite3"))
         return self._kg
 
@@ -1228,14 +1292,27 @@ class MemPalace:
         self._evolve_thread.start()
         logger.info("Auto-evolve started (interval=%ds)", interval)
 
-
-    def store(self, content, room="general", source=None,
-              memory_type=None, metadata=None, tags=None,
-              ttl=None):
+    def store(
+        self,
+        content,
+        room="general",
+        source=None,
+        memory_type=None,
+        metadata=None,
+        tags=None,
+        ttl=None,
+    ):
         """Alias for remember() ? store a single memory."""
-        return self.remember(content, room=room, memory_type=memory_type,
-                             metadata=metadata, source=source or "",
-                             tags=tags, ttl=ttl)
+        return self.remember(
+            content,
+            room=room,
+            memory_type=memory_type,
+            metadata=metadata,
+            source=source or "",
+            tags=tags,
+            ttl=ttl,
+        )
+
     def batch_remember(
         self,
         memories: list[dict[str, Any]],
@@ -1288,19 +1365,23 @@ class MemPalace:
             content_hash = hashlib.md5(content_text.encode()).hexdigest()[:8]
             source_key = source or f"batch_{content_hash}"
 
-            drawers.append({
-                "wing": self._wing,
-                "room": room,
-                "content": content_text,
-                "source_file": source_key,
-                "chunk_index": 0,
-                "added_by": "sdk_batch",
-                "extra_meta": meta,
-            })
+            drawers.append(
+                {
+                    "wing": self._wing,
+                    "room": room,
+                    "content": content_text,
+                    "source_file": source_key,
+                    "chunk_index": 0,
+                    "added_by": "sdk_batch",
+                    "extra_meta": meta,
+                }
+            )
             ids.append(_make_drawer_id(self._wing, room, source_key, 0))
 
         added, skipped = batch_add_drawers(collection, drawers)
-        return BatchRememberResult(total=len(memories), stored=added, duplicates=0, ids=[i for i in ids if i])
+        return BatchRememberResult(
+            total=len(memories), stored=added, duplicates=0, ids=[i for i in ids if i]
+        )
 
     def batch_forget(self, drawer_ids) -> BatchForgetResult:
         """Delete multiple memories in a single batch operation."""
@@ -1311,12 +1392,12 @@ class MemPalace:
             return BatchForgetResult(requested=0, deleted=0, not_found=0)
         try:
             collection.delete(ids=drawer_ids)
-            return BatchForgetResult(requested=len(drawer_ids), deleted=len(drawer_ids), not_found=0)
+            return BatchForgetResult(
+                requested=len(drawer_ids), deleted=len(drawer_ids), not_found=0
+            )
         except Exception as _e:
             logger.debug("Count failed: %s", _e)
             return BatchForgetResult(requested=len(drawer_ids), deleted=0, not_found=0)
-
-    
 
     def batch_recall(
         self,
@@ -1419,6 +1500,7 @@ class MemPalace:
         This is the v0.3.0 convention — prefer this for new code.
         """
         return self.batch_remember(memories)
+
     def fuzzy_search(
         self,
         query: str,
@@ -1478,11 +1560,13 @@ class MemPalace:
             dists = results["distances"][0] or [0.0] * len(docs)
             for doc, meta, dist in zip(docs, metas, dists):
                 if dist <= threshold:
-                    output.append({
-                        "content": doc,
-                        "metadata": meta,
-                        "distance": dist,
-                    })
+                    output.append(
+                        {
+                            "content": doc,
+                            "metadata": meta,
+                            "distance": dist,
+                        }
+                    )
         return output
 
     def recent(
@@ -1527,14 +1611,16 @@ class MemPalace:
             for i, doc_id in enumerate(results["ids"]):
                 meta = results["metadatas"][i] if results["metadatas"] else {}
                 doc = results["documents"][i] if results["documents"] else ""
-                output.append({
-                    "id": doc_id,
-                    "content": doc,
-                    "metadata": meta,
-                    "filed_at": meta.get("filed_at", ""),
-                })
+                output.append(
+                    {
+                        "id": doc_id,
+                        "content": doc,
+                        "metadata": meta,
+                        "filed_at": meta.get("filed_at", ""),
+                    }
+                )
             output.sort(key=lambda x: x.get("filed_at", ""), reverse=True)
-        return output[offset:offset + limit]
+        return output[offset : offset + limit]
 
     def search(
         self,
@@ -1734,11 +1820,13 @@ class MemPalace:
             for i, doc_id in enumerate(results["ids"]):
                 meta = results["metadatas"][i] if results["metadatas"] else {}
                 doc = results["documents"][i] if results["documents"] else ""
-                output.append({
-                    "id": doc_id,
-                    "content": doc,
-                    "metadata": meta,
-                })
+                output.append(
+                    {
+                        "id": doc_id,
+                        "content": doc,
+                        "metadata": meta,
+                    }
+                )
         return output
 
     def stop_auto_evolve(self) -> None:

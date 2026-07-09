@@ -5,7 +5,6 @@ to improve context relevance.
 """
 
 from typing import Optional
-import json
 
 
 class BundleScorer:
@@ -27,10 +26,7 @@ class BundleScorer:
         self._bundle_cache = {}
 
     def find_bundles(
-        self,
-        hit_ids: list[str],
-        hit_texts: list[str],
-        max_hops: int = 2
+        self, hit_ids: list[str], hit_texts: list[str], max_hops: int = 2
     ) -> list[dict]:
         """Find related memory bundles from hits.
 

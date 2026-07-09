@@ -6,7 +6,6 @@ import json
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
 
 logger = logging.getLogger("mempalace_evolve.export")
 
@@ -32,17 +31,19 @@ def export_json(collection, wing: str | None = None, output: str | None = None) 
     if data and data["ids"]:
         for i, doc_id in enumerate(data["ids"]):
             meta = data["metadatas"][i] if data.get("metadatas") else {}
-            memories.append({
-                "id": doc_id,
-                "content": data["documents"][i],
-                "wing": meta.get("wing", ""),
-                "room": meta.get("room", ""),
-                "source_file": meta.get("source_file", ""),
-                "importance": meta.get("importance", ""),
-                "last_accessed": meta.get("last_accessed", ""),
-                "filed_at": meta.get("filed_at", ""),
-                "metadata": dict(meta),
-            })
+            memories.append(
+                {
+                    "id": doc_id,
+                    "content": data["documents"][i],
+                    "wing": meta.get("wing", ""),
+                    "room": meta.get("room", ""),
+                    "source_file": meta.get("source_file", ""),
+                    "importance": meta.get("importance", ""),
+                    "last_accessed": meta.get("last_accessed", ""),
+                    "filed_at": meta.get("filed_at", ""),
+                    "metadata": dict(meta),
+                }
+            )
 
     result = {
         "exported_at": datetime.now(timezone.utc).isoformat(),

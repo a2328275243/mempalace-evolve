@@ -1,4 +1,5 @@
 """mempalace doctor — verify installation and diagnose issues."""
+
 import sys
 import tempfile
 import shutil
@@ -25,6 +26,7 @@ def run_doctor() -> bool:
     # 2. chromadb import
     try:
         import chromadb
+
         print(bullet(f"chromadb {chromadb.__version__}"))
         passed += 1
     except ImportError:
@@ -35,8 +37,9 @@ def run_doctor() -> bool:
     tmp = tempfile.mkdtemp(prefix="mempalace_doctor_")
     try:
         from mempalace_evolve.sdk import MemPalace
+
         p = MemPalace(tmp, wing="doctor")
-        did = p.remember("doctor test", room="test")
+        p.remember("doctor test", room="test")
         results = p.recall("doctor test", limit=1)
         if results and results[0]["content"] == "doctor test":
             print(bullet("记忆读写正常"))
@@ -70,7 +73,11 @@ def run_doctor() -> bool:
 
     # 5. Optional dependencies
     print(dim("\n  可选依赖:"))
-    for name, pkg in [("fastapi", "fastapi"), ("fastmcp", "fastmcp"), ("langchain-core", "langchain_core")]:
+    for name, pkg in [
+        ("fastapi", "fastapi"),
+        ("fastmcp", "fastmcp"),
+        ("langchain-core", "langchain_core"),
+    ]:
         try:
             mod = __import__(pkg)
             ver = getattr(mod, "__version__", "?")

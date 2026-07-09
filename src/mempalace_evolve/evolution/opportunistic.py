@@ -18,9 +18,13 @@ from mempalace_evolve.core.lifecycle import find_ttl_expired, purge_expired, _sa
 logger = logging.getLogger("mempalace_evolve.evolve")
 
 
-def evolve_low_score_cleanup(collection, dry_run: bool = True,
-                             purge_days: int = 90, min_score: float = 0.30,
-                             protected_rooms: list[str] | None = None) -> dict:
+def evolve_low_score_cleanup(
+    collection,
+    dry_run: bool = True,
+    purge_days: int = 90,
+    min_score: float = 0.30,
+    protected_rooms: list[str] | None = None,
+) -> dict:
     """低分清理：评分 < min_score 且超过 purge_days 未访问 → 删除
 
     protected_rooms 中的记忆不会被删除（如 decisions 设置了 never_delete）。
@@ -44,8 +48,9 @@ def evolve_low_score_cleanup(collection, dry_run: bool = True,
     return {"action": "low_score_cleanup", "purged": result["purged"]}
 
 
-def evolve_candidate_promotion(collection, dry_run: bool = True,
-                               promote_score: float = 0.45) -> dict:
+def evolve_candidate_promotion(
+    collection, dry_run: bool = True, promote_score: float = 0.45
+) -> dict:
     """candidate 晋升 + 跨 wing 热门记忆自动升级为 procedural。
 
     晋升条件（满足任一）：
@@ -68,8 +73,9 @@ def evolve_candidate_promotion(collection, dry_run: bool = True,
         to_promote = []
         for i, doc_id in enumerate(candidates["ids"]):
             meta = candidates["metadatas"][i]
-            importance = _safe_float(meta.get("enhanced_importance"),
-                                     _safe_float(meta.get("importance"), 0.3))
+            importance = _safe_float(
+                meta.get("enhanced_importance"), _safe_float(meta.get("importance"), 0.3)
+            )
             if importance >= promote_score:
                 to_promote.append((doc_id, candidates["documents"][i], meta, importance))
 
@@ -120,6 +126,7 @@ def evolve_orphan_entities(dry_run: bool = True) -> dict:
     """孤立实体清理：KG 中无任何关系的实体 → 删除"""
     try:
         from mempalace_evolve.core.knowledge_graph import KnowledgeGraph
+
         kg = KnowledgeGraph()
     except (ImportError, Exception):
         return {"action": "orphan_cleanup", "skipped": True}
@@ -164,8 +171,7 @@ def evolve_orphan_entities(dry_run: bool = True) -> dict:
     return {"action": "orphan_cleanup", "removed": removed, "failed": failed}
 
 
-def evolve_stale_decisions(collection, dry_run: bool = True,
-                           stale_days: int = 180) -> dict:
+def evolve_stale_decisions(collection, dry_run: bool = True, stale_days: int = 180) -> dict:
     """过时决策标记：decisions room 中超过 stale_days 的 → 标记 stale"""
     now = datetime.now(timezone.utc)
     cutoff = now - timedelta(days=stale_days)
@@ -225,19 +231,29 @@ def evolve_stale_decisions(collection, dry_run: bool = True,
     return {"action": "stale_decisions", "marked_stale": marked, "failed": failed}
 
 
-def run_opportunistic_evolve(collection, dry_run: bool = True,
-                             purge_days: int = 90, min_score: float = 0.30,
-                             promote_score: float = 0.45,
-                             stale_days: int = 180,
-                             protected_rooms: list[str] | None = None) -> dict:
+def run_opportunistic_evolve(
+    collection,
+    dry_run: bool = True,
+    purge_days: int = 90,
+    min_score: float = 0.30,
+    promote_score: float = 0.45,
+    stale_days: int = 180,
+    protected_rooms: list[str] | None = None,
+) -> dict:
     """执行完整的被动进化流程（四项维护）。"""
     results = {}
     results["low_score_cleanup"] = evolve_low_score_cleanup(
-        collection, dry_run=dry_run, purge_days=purge_days,
-        min_score=min_score, protected_rooms=protected_rooms)
+        collection,
+        dry_run=dry_run,
+        purge_days=purge_days,
+        min_score=min_score,
+        protected_rooms=protected_rooms,
+    )
     results["candidate_promotion"] = evolve_candidate_promotion(
-        collection, dry_run=dry_run, promote_score=promote_score)
+        collection, dry_run=dry_run, promote_score=promote_score
+    )
     results["orphan_cleanup"] = evolve_orphan_entities(dry_run=dry_run)
     results["stale_decisions"] = evolve_stale_decisions(
-        collection, dry_run=dry_run, stale_days=stale_days)
+        collection, dry_run=dry_run, stale_days=stale_days
+    )
     return {"success": True, "dry_run": dry_run, "results": results}

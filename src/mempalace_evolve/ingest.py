@@ -12,14 +12,11 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import os
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from mempalace_evolve.models import (
-    Chunk,
     IngestResult,
     IngestSummary,
     Source,
@@ -32,6 +29,7 @@ _DEFAULT_MANIFEST_NAME = ".mempalace_manifest.json"
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _compute_hash(content: str) -> str:
     return hashlib.sha256(content.encode("utf-8")).hexdigest()[:16]
@@ -52,9 +50,17 @@ def _read_text_file(path: Path) -> str | None:
 
 def _default_ignore_patterns() -> set[str]:
     return {
-        ".git", "__pycache__", "node_modules", ".venv", "env",
-        ".DS_Store", "Thumbs.db", ".gitignore", ".mempalace_manifest.json",
-        "*.pyc", "*.pyo",
+        ".git",
+        "__pycache__",
+        "node_modules",
+        ".venv",
+        "env",
+        ".DS_Store",
+        "Thumbs.db",
+        ".gitignore",
+        ".mempalace_manifest.json",
+        "*.pyc",
+        "*.pyo",
     }
 
 
@@ -90,6 +96,7 @@ def _save_manifest(palace_path: str, manifest: dict[str, Any]) -> None:
 # Public API
 # ---------------------------------------------------------------------------
 
+
 def scan_directory(
     directory: str,
     *,
@@ -123,7 +130,7 @@ def scan_directory(
 
 def ingest_file(
     path: str,
-    palace: Any,                  # MemPalace instance duck-typed
+    palace: Any,  # MemPalace instance duck-typed
     *,
     room: str = "documents",
     chunk_size: int = 1000,
@@ -196,17 +203,19 @@ def ingest_file(
         current_len += len(line_text) + 1  # +1 for newline
         if current_len >= chunk_size and current_chunk:
             chunk_text = "\n".join(current_chunk)
-            chunks.append({
-                "content": chunk_text,
-                "room": room,
-                "metadata": {
-                    "source_id": source_id,
-                    "source_path": path,
-                    "chunk_index": len(chunks),
-                    "start_line": start_line,
-                    "end_line": lineno,
-                },
-            })
+            chunks.append(
+                {
+                    "content": chunk_text,
+                    "room": room,
+                    "metadata": {
+                        "source_id": source_id,
+                        "source_path": path,
+                        "chunk_index": len(chunks),
+                        "start_line": start_line,
+                        "end_line": lineno,
+                    },
+                }
+            )
             # Retain overlap lines
             overlap_lines = []
             overlap_len = 0
@@ -222,17 +231,19 @@ def ingest_file(
     # Last chunk
     if current_chunk:
         chunk_text = "\n".join(current_chunk)
-        chunks.append({
-            "content": chunk_text,
-            "room": room,
-            "metadata": {
-                "source_id": source_id,
-                "source_path": path,
-                "chunk_index": len(chunks),
-                "start_line": start_line,
-                "end_line": len(lines) - 1,
-            },
-        })
+        chunks.append(
+            {
+                "content": chunk_text,
+                "room": room,
+                "metadata": {
+                    "source_id": source_id,
+                    "source_path": path,
+                    "chunk_index": len(chunks),
+                    "start_line": start_line,
+                    "end_line": len(lines) - 1,
+                },
+            }
+        )
 
     if not chunks:
         return IngestResult(
@@ -342,9 +353,7 @@ def ingest_directory(
                     if result.status == "ok":
                         summary.indexed += 1
                         manifest[path_str] = {
-                            "hash": _compute_hash(
-                                _read_text_file(Path(path_str)) or ""
-                            ),
+                            "hash": _compute_hash(_read_text_file(Path(path_str)) or ""),
                             "last_indexed": datetime.now(timezone.utc).isoformat(),
                         }
                     elif result.status == "skipped":
@@ -358,9 +367,7 @@ def ingest_directory(
             if result.status == "ok":
                 summary.indexed += 1
                 manifest[path_str] = {
-                    "hash": _compute_hash(
-                        _read_text_file(file_path) or ""
-                    ),
+                    "hash": _compute_hash(_read_text_file(file_path) or ""),
                     "last_indexed": datetime.now(timezone.utc).isoformat(),
                 }
             elif result.status == "skipped":
@@ -370,6 +377,7 @@ def ingest_directory(
 
     _save_manifest(palace_path, manifest)
     return summary
+
 
 def list_sources(palace_path: str) -> list[Source]:
     """List tracked sources from the ingest manifest."""
@@ -399,4 +407,3 @@ def purge_source(palace_path: str, source_path: str) -> bool:
         _save_manifest(palace_path, manifest)
         return True
     return False
-

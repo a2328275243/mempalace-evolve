@@ -11,8 +11,8 @@ Or programmatically:
 from __future__ import annotations
 
 import secrets
-from pathlib import Path
 from typing import Any
+
 
 def create_app(palace_path: str | None = None, wing: str = "global", api_key: str | None = None):
     """Create a FastAPI app exposing MemPalace as REST endpoints.
@@ -26,7 +26,7 @@ def create_app(palace_path: str | None = None, wing: str = "global", api_key: st
     try:
         from fastapi import FastAPI, HTTPException, Request
         from fastapi.responses import JSONResponse, StreamingResponse
-        from pydantic import BaseModel, Field
+        from pydantic import BaseModel
     except ImportError:
         raise ImportError(
             "REST API requires fastapi. Install with: pip install mempalace-evolve[api]"
@@ -45,6 +45,7 @@ def create_app(palace_path: str | None = None, wing: str = "global", api_key: st
 
     # API key middleware
     if api_key:
+
         @app.middleware("http")
         async def check_api_key(request: Request, call_next):
             if request.url.path == "/health":
@@ -115,7 +116,6 @@ def create_app(palace_path: str | None = None, wing: str = "global", api_key: st
     class SnoozeRequest(BaseModel):
         drawer_id: str
         days: int = 1
-
 
     class PurgeRequest(BaseModel):
         ttl_days: int = 90
@@ -367,8 +367,13 @@ def create_app(palace_path: str | None = None, wing: str = "global", api_key: st
 
     return app
 
-def serve(host: str = "0.0.0.0", port: int = 8765, palace_path: str | None = None,
-          api_key: str | None = None):
+
+def serve(
+    host: str = "0.0.0.0",
+    port: int = 8765,
+    palace_path: str | None = None,
+    api_key: str | None = None,
+):
     """Start the REST API server."""
     try:
         import uvicorn
@@ -379,4 +384,3 @@ def serve(host: str = "0.0.0.0", port: int = 8765, palace_path: str | None = Non
 
     app = create_app(palace_path, api_key=api_key)
     uvicorn.run(app, host=host, port=port)
-

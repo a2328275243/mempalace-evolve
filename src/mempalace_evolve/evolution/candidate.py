@@ -6,7 +6,6 @@ This is the agent-agnostic version of the logic from stop_unified.py.
 from __future__ import annotations
 
 import hashlib
-import json
 import logging
 from datetime import datetime, timezone
 from typing import Any
@@ -16,15 +15,41 @@ logger = logging.getLogger("mempalace_evolve.evolution")
 # Keywords that indicate memorable content
 MEMORY_KEYWORDS = [
     # Decisions
-    "decided", "decision", "chose", "选择", "决定", "确定",
+    "decided",
+    "decision",
+    "chose",
+    "选择",
+    "决定",
+    "确定",
     # Errors & fixes
-    "error", "fix", "bug", "issue", "错误", "修复", "问题",
+    "error",
+    "fix",
+    "bug",
+    "issue",
+    "错误",
+    "修复",
+    "问题",
     # Architecture
-    "architecture", "design", "pattern", "架构", "设计", "模式",
+    "architecture",
+    "design",
+    "pattern",
+    "架构",
+    "设计",
+    "模式",
     # Config
-    "config", "setting", "install", "配置", "设置", "安装",
+    "config",
+    "setting",
+    "install",
+    "配置",
+    "设置",
+    "安装",
     # Important facts
-    "important", "remember", "note", "记住", "注意", "关键",
+    "important",
+    "remember",
+    "note",
+    "记住",
+    "注意",
+    "关键",
 ]
 
 
@@ -54,14 +79,16 @@ class CandidateExtractor:
         for chunk in chunks:
             score = self._score_chunk(chunk)
             if score >= 3:
-                candidates.append({
-                    "id": self._stable_id(chunk),
-                    "content": chunk[:2000],
-                    "score": score,
-                    "type": self._classify(chunk),
-                    "created_at": datetime.now(timezone.utc).isoformat(),
-                    **context,
-                })
+                candidates.append(
+                    {
+                        "id": self._stable_id(chunk),
+                        "content": chunk[:2000],
+                        "score": score,
+                        "type": self._classify(chunk),
+                        "created_at": datetime.now(timezone.utc).isoformat(),
+                        **context,
+                    }
+                )
 
         return candidates
 
@@ -106,9 +133,10 @@ class CandidateExtractor:
 
         # Technical density (proportional notation, API names, version numbers)
         import re
-        tech_patterns = len(re.findall(r'[A-Z][a-z]+(?:\.[A-Z][a-z]+)+', chunk))  # CamelCase
-        tech_patterns += len(re.findall(r'\d+\.\d+\.\d+', chunk))  # Version numbers
-        tech_patterns += len(re.findall(r'[A-Z_]{3,}', chunk))  # Constants/env vars
+
+        tech_patterns = len(re.findall(r"[A-Z][a-z]+(?:\.[A-Z][a-z]+)+", chunk))  # CamelCase
+        tech_patterns += len(re.findall(r"\d+\.\d+\.\d+", chunk))  # Version numbers
+        tech_patterns += len(re.findall(r"[A-Z_]{3,}", chunk))  # Constants/env vars
         if tech_patterns >= 2:
             score += 1
 

@@ -8,7 +8,7 @@ return raw dicts should eventually return or accept these models.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -16,6 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field
 # ---------------------------------------------------------------------------
 # Memory / Drawer models
 # ---------------------------------------------------------------------------
+
 
 class MemoryEntry(BaseModel):
     """A single memory entry stored in a palace drawer."""
@@ -103,6 +104,7 @@ class BatchForgetResult(BaseModel):
 # Knowledge Graph models
 # ---------------------------------------------------------------------------
 
+
 class Triple(BaseModel):
     """Subject-predicate-object triple in the knowledge graph."""
 
@@ -140,6 +142,7 @@ class QueryEntityResult(BaseModel):
 # Review & Scoring models
 # ---------------------------------------------------------------------------
 
+
 class ReviewCard(BaseModel):
     """A memory due for spaced-repetition review."""
 
@@ -172,6 +175,7 @@ class ScoredMemory(BaseModel):
 # Configuration model (minimal Pydantic wrapper)
 # ---------------------------------------------------------------------------
 
+
 class PalaceConfig(BaseModel):
     """Typed configuration for a MemPalace instance."""
 
@@ -194,6 +198,7 @@ class PalaceConfig(BaseModel):
 # Stats / Health models
 # ---------------------------------------------------------------------------
 
+
 class PalaceStats(BaseModel):
     """Aggregate statistics for a palace."""
 
@@ -214,9 +219,12 @@ class DoctorReport(BaseModel):
     chroma_ok: bool = True
     onnx_ok: bool = True
     issues: list[str] = Field(default_factory=list)
+
+
 # ---------------------------------------------------------------------------
 # Unified Data Model (Roadmap Month 2-3): Source, Chunk, WikiPage, Citation
 # ---------------------------------------------------------------------------
+
 
 class SourceID(str):
     """Opaque source identifier: sha256(content, filename, ingest_time)."""
@@ -240,9 +248,7 @@ class Source(BaseModel):
     chunk_count: int = Field(default=0, ge=0)
     last_indexed: datetime | None = None
     last_modified: datetime | None = None
-    status: str = Field(
-        default="pending", description="pending | indexed | stale | archived"
-    )
+    status: str = Field(default="pending", description="pending | indexed | stale | archived")
 
 
 class Chunk(BaseModel):
@@ -294,6 +300,7 @@ class IngestSummary(BaseModel):
 # Bulk / Iterator models (v0.3.0)
 # ---------------------------------------------------------------------------
 
+
 class BatchRecallInput(BaseModel):
     """Input for bulk semantic recall."""
 
@@ -306,7 +313,7 @@ class BatchRecallResult(BaseModel):
 
     results: list[dict[str, Any]] = Field(
         default_factory=list,
-        description="Each entry: {query, memories: [{content, distance, ...}]}"
+        description="Each entry: {query, memories: [{content, distance, ...}]}",
     )
 
 

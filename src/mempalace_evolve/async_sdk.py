@@ -46,10 +46,12 @@ def retry_on_error(max_retries: int = 3, base_delay: float = 0.5):
 
     Exponential backoff: delay * 2**retry_count.
     """
+
     def decorator(func):
         @functools.wraps(func)
         async def wrapper(self, *args, **kwargs):
             from mempalace_evolve.exceptions import StorageError
+
             last_exc = None
             for attempt in range(max_retries + 1):
                 try:
@@ -57,7 +59,7 @@ def retry_on_error(max_retries: int = 3, base_delay: float = 0.5):
                 except StorageError as e:
                     last_exc = e
                     if attempt < max_retries:
-                        delay = base_delay * (2 ** attempt)
+                        delay = base_delay * (2**attempt)
                         logger.warning(
                             "Retry %d/%d for %s after %.1fs: %s",
                             attempt + 1,
@@ -70,7 +72,9 @@ def retry_on_error(max_retries: int = 3, base_delay: float = 0.5):
                     else:
                         raise
             raise last_exc
+
         return wrapper
+
     return decorator
 
 
@@ -149,13 +153,14 @@ class AsyncMemPalace:
         if hasattr(sync, name):
             attr = getattr(sync, name)
             if callable(attr):
+
                 async def _proxy(*args, **kwargs):
                     return await self._run(name, *args, **kwargs)
+
                 return _proxy
             return attr
-        raise AttributeError(
-            f"{type(self).__name__!r} has no attribute {name!r}"
-        )
+        raise AttributeError(f"{type(self).__name__!r} has no attribute {name!r}")
+
     async def _run(self, name: str, *args, **kwargs):
         """Execute a sync method in the thread pool."""
         if self._closed:
@@ -167,9 +172,7 @@ class AsyncMemPalace:
     # Core memory operations
     # ------------------------------------------------------------------
 
-    async def remember(
-        self, content: str, room: str = "general", **kwargs
-    ) -> str | None:
+    async def remember(self, content: str, room: str = "general", **kwargs) -> str | None:
         """Store a memory asynchronously."""
         return await self._run("remember", content=content, room=room, **kwargs)
 
@@ -182,16 +185,46 @@ class AsyncMemPalace:
     # ------------------------------------------------------------------
 
     async def recall(
-        self, query: str, room: str | None = None, limit: int = 10
+        self,
+        query: str,
+        room: str | None = None,
+        limit: int = 10,
+        threshold: float = 0.8,
+        hybrid: bool = True,
     ) -> list[dict]:
         """Search memories: current wing + global procedural."""
-        return await self._run("recall", query=query, room=room, limit=limit)
+        return await self._run(
+            "recall",
+            query=query,
+            room=room,
+            limit=limit,
+            threshold=threshold,
+            hybrid=hybrid,
+        )
 
     async def recall_stream(
-        self, query: str, room: str | None = None, limit: int = 10
+        self,
+        query: str,
+        room: str | None = None,
+        limit: int = 10,
+        threshold: float = 0.8,
+        hybrid: bool = True,
     ) -> list[dict]:
         """Stream recall results (returns list; use iter_all for true streaming)."""
-        return await self._run("recall", query=query, room=room, limit=limit)
+        if self._closed:
+            raise RuntimeError("Palace is closed")
+        sync = self._get_sync()
+        return await asyncio.to_thread(
+            lambda: list(
+                sync.recall_stream(
+                    query=query,
+                    room=room,
+                    limit=limit,
+                    threshold=threshold,
+                    hybrid=hybrid,
+                )
+            )
+        )
 
     async def search(
         self,
@@ -210,10 +243,18 @@ class AsyncMemPalace:
     ) -> list[dict[str, Any]]:
         """Unified async search router (hybrid / semantic / metadata)."""
         return await self._run(
-            "search", query=query, limit=limit, mode=mode, room=room,
-            threshold=threshold, memory_types=memory_types, tags=tags,
-            time_from=time_from, time_to=time_to,
-            metadata_filter=metadata_filter, expand_kg=expand_kg,
+            "search",
+            query=query,
+            limit=limit,
+            mode=mode,
+            room=room,
+            threshold=threshold,
+            memory_types=memory_types,
+            tags=tags,
+            time_from=time_from,
+            time_to=time_to,
+            metadata_filter=metadata_filter,
+            expand_kg=expand_kg,
         )
 
     async def hybrid_search(
@@ -231,10 +272,17 @@ class AsyncMemPalace:
     ) -> list[dict[str, Any]]:
         """Multi-faceted search: vector search + metadata + KG expansion."""
         return await self._run(
-            "hybrid_search", query=query, limit=limit, room=room,
-            threshold=threshold, memory_types=memory_types, tags=tags,
-            time_from=time_from, time_to=time_to,
-            metadata_filter=metadata_filter, expand_kg=expand_kg,
+            "hybrid_search",
+            query=query,
+            limit=limit,
+            room=room,
+            threshold=threshold,
+            memory_types=memory_types,
+            tags=tags,
+            time_from=time_from,
+            time_to=time_to,
+            metadata_filter=metadata_filter,
+            expand_kg=expand_kg,
         )
 
     async def filter_by_metadata(
@@ -249,9 +297,13 @@ class AsyncMemPalace:
     ) -> list[dict[str, Any]]:
         """Pure metadata filter search (no semantic similarity)."""
         return await self._run(
-            "filter_by_metadata", limit=limit, room=room,
-            memory_types=memory_types, tags=tags,
-            time_from=time_from, time_to=time_to,
+            "filter_by_metadata",
+            limit=limit,
+            room=room,
+            memory_types=memory_types,
+            tags=tags,
+            time_from=time_from,
+            time_to=time_to,
             metadata_filter=metadata_filter,
         )
 
@@ -262,11 +314,17 @@ class AsyncMemPalace:
         return await self._run("search_by_metadata", filter=filter, limit=limit)
 
     async def find_similar(
-        self, content: str, room: str | None = None, threshold: float = 0.85,
+        self,
+        content: str,
+        room: str | None = None,
+        threshold: float = 0.85,
     ) -> list[dict]:
         """Find similar memories to the given content."""
         return await self._run(
-            "find_similar", content=content, room=room, threshold=threshold,
+            "find_similar",
+            content=content,
+            room=room,
+            threshold=threshold,
         )
 
     async def fuzzy_search(
@@ -280,12 +338,19 @@ class AsyncMemPalace:
     ) -> list[dict[str, Any]]:
         """Fuzzy hybrid search: semantic vector + metadata filtering."""
         return await self._run(
-            "fuzzy_search", query=query, limit=limit, room=room,
-            threshold=threshold, memory_types=memory_types, tags=tags,
+            "fuzzy_search",
+            query=query,
+            limit=limit,
+            room=room,
+            threshold=threshold,
+            memory_types=memory_types,
+            tags=tags,
         )
 
     async def recent(
-        self, limit: int = 10, room: str | None = None,
+        self,
+        limit: int = 10,
+        room: str | None = None,
     ) -> list[dict[str, Any]]:
         """Retrieve the most recently stored memories."""
         return await self._run("recent", limit=limit, room=room)
@@ -343,20 +408,31 @@ class AsyncMemPalace:
     # ------------------------------------------------------------------
 
     async def batch_remember(
-        self, memories: list[dict[str, Any]], room: str = "general",
+        self,
+        memories: list[dict[str, Any]],
     ) -> BatchRememberResult:
         """Store multiple memories in a single batch operation."""
-        return await self._run("batch_remember", memories=memories, room=room)
+        return await self._run("batch_remember", memories=memories)
 
     async def batch_forget(self, memory_ids: list[str]) -> BatchForgetResult:
         """Delete multiple memories in a single batch operation."""
         return await self._run("batch_forget", drawer_ids=memory_ids)
 
     async def batch_recall(
-        self, queries: list[str], room: str | None = None, limit: int = 10,
+        self,
+        queries: list[str],
+        room: str | None = None,
+        limit: int = 10,
+        threshold: float = 0.8,
     ) -> BatchRecallResult:
         """Bulk semantic recall: run multiple queries in a single batch."""
-        return await self._run("batch_recall", queries=queries, room=room, limit=limit)
+        return await self._run(
+            "batch_recall",
+            queries=queries,
+            room=room,
+            limit=limit,
+            threshold=threshold,
+        )
 
     async def bulk_remember_typed(self, memories: list[dict[str, Any]]) -> list[str | None]:
         """Typed alias for batch_remember with Pydantic validation."""
@@ -385,7 +461,10 @@ class AsyncMemPalace:
     # ------------------------------------------------------------------
 
     async def add_fact(
-        self, subject: str, predicate: str, obj: str,
+        self,
+        subject: str,
+        predicate: str,
+        obj: str,
     ) -> str | None:
         """Add a triple to the knowledge graph."""
         return await self._run("add_fact", subject=subject, predicate=predicate, obj=obj)
@@ -395,7 +474,10 @@ class AsyncMemPalace:
         return await self._run("import_triples", triples=triples)
 
     async def query_entity(
-        self, entity: str, as_of: str | None = None, direction: str = "outgoing",
+        self,
+        entity: str,
+        as_of: str | None = None,
+        direction: str = "outgoing",
     ) -> list[dict]:
         """Query the knowledge graph for an entity."""
         return await self._run("query_entity", entity=entity, as_of=as_of, direction=direction)
@@ -405,11 +487,17 @@ class AsyncMemPalace:
         return await self._run("query_entity_v2", entity=entity, as_of=as_of)
 
     async def query_path(
-        self, start_entity: str, end_entity: str, max_depth: int = 5,
+        self,
+        start_entity: str,
+        end_entity: str,
+        max_depth: int = 5,
     ) -> list[dict]:
         """Find shortest path between two entities in the knowledge graph."""
         return await self._run(
-            "query_path", start_entity=start_entity, end_entity=end_entity, max_depth=max_depth,
+            "query_path",
+            start_entity=start_entity,
+            end_entity=end_entity,
+            max_depth=max_depth,
         )
 
     async def find_entity_by_fuzzy(self, name: str, threshold: float = 0.8) -> list[dict]:
@@ -417,11 +505,17 @@ class AsyncMemPalace:
         return await self._run("find_entity_by_fuzzy", name=name, threshold=threshold)
 
     async def graph_traverse(
-        self, start_entity: str, max_depth: int = 3, direction: str = "both",
+        self,
+        start_entity: str,
+        max_depth: int = 3,
+        direction: str = "both",
     ) -> dict[str, Any]:
         """Traverse the knowledge graph from a starting entity using BFS."""
         return await self._run(
-            "graph_traverse", start_entity=start_entity, max_depth=max_depth, direction=direction,
+            "graph_traverse",
+            start_entity=start_entity,
+            max_depth=max_depth,
+            direction=direction,
         )
 
     async def kg_stats(self) -> dict[str, Any]:
@@ -429,10 +523,16 @@ class AsyncMemPalace:
         return await self._run("kg_stats")
 
     async def invalidate_triple(
-        self, subject: str, predicate: str, obj: str, ended: str | None = None,
+        self,
+        subject: str,
+        predicate: str,
+        obj: str,
+        ended: str | None = None,
     ) -> bool:
         """Invalidate a knowledge graph triple."""
-        return await self._run("invalidate_triple", subject=subject, predicate=predicate, obj=obj, ended=ended)
+        return await self._run(
+            "invalidate_triple", subject=subject, predicate=predicate, obj=obj, ended=ended
+        )
 
     # ------------------------------------------------------------------
     # Evolution operations
@@ -466,9 +566,25 @@ class AsyncMemPalace:
     # Concurrent operations (multiple calls in parallel)
     # ------------------------------------------------------------------
 
-    async def recall_many(self, queries: list[str], room: str | None = None, limit: int = 10) -> list[list[dict]]:
+    async def recall_many(
+        self,
+        queries: list[str],
+        room: str | None = None,
+        limit: int = 10,
+        threshold: float = 0.8,
+        hybrid: bool = True,
+    ) -> list[list[dict]]:
         """Run multiple recall queries concurrently."""
-        tasks = [self.recall(q, room=room, limit=limit) for q in queries]
+        tasks = [
+            self.recall(
+                q,
+                room=room,
+                limit=limit,
+                threshold=threshold,
+                hybrid=hybrid,
+            )
+            for q in queries
+        ]
         return await asyncio.gather(*tasks)
 
     async def remember_many(self, items: list[dict[str, Any]]) -> list[str | None]:
@@ -479,17 +595,19 @@ class AsyncMemPalace:
     # Lifecycle
     # ------------------------------------------------------------------
 
-
     # Lifecycle management (TTL, compression, consolidation)
     # ------------------------------------------------------------------
 
     async def purge_expired(self, ttl_days: int = 90, ttl_summary_days: int = 180) -> dict:
         """Purge expired (TTL) memories from the palace."""
         from mempalace_evolve.core.lifecycle import find_ttl_expired, purge_expired as _pe
+
         collection = self._get_collection()
         if not collection:
             return {"purged": 0, "purged_ids": []}
-        expired = find_ttl_expired(collection, ttl_days=ttl_days, ttl_summary_days=ttl_summary_days, wing=self._wing)
+        expired = find_ttl_expired(
+            collection, ttl_days=ttl_days, ttl_summary_days=ttl_summary_days, wing=self._wing
+        )
         ids = [item.get("id", "") for item in expired if isinstance(item, dict)]
         if not ids:
             return {"purged": 0, "purged_ids": []}
@@ -497,9 +615,12 @@ class AsyncMemPalace:
         result["purged_ids"] = ids
         return result
 
-    async def compress_old_memories(self, compress_after_days: int = 60, max_chars: int = 800) -> dict:
+    async def compress_old_memories(
+        self, compress_after_days: int = 60, max_chars: int = 800
+    ) -> dict:
         """Compress old, unused memories into shorter summaries."""
         from mempalace_evolve.core.lifecycle import find_compress_candidates, compress_candidates
+
         collection = self._get_collection()
         if not collection:
             return {"candidates": 0, "compressed": 0}
@@ -515,12 +636,15 @@ class AsyncMemPalace:
             metadata={"hnsw:space": "cosine"},
             embedding_function=get_cached_ef(),
         )
-        result = compress_candidates(collection, candidates, archive_col, max_summary_chars=max_chars)
+        result = compress_candidates(
+            collection, candidates, archive_col, max_summary_chars=max_chars
+        )
         return result
 
     async def consolidate(self, dry_run: bool = False) -> dict:
         """Run daily consolidation: deduplicate and merge similar memories."""
         from mempalace_evolve.core.consolidation import consolidate_daily
+
         return consolidate_daily(wing=self._wing, dry_run=dry_run)
 
     async def count_memories(self) -> int:

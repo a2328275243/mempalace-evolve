@@ -18,7 +18,6 @@ from typing import Any, TYPE_CHECKING
 
 from mempalace_evolve.core.llm.client import get_llm_client, LLMClient
 from mempalace_evolve.core.llm.types import (
-    CandidateMemory,
     ExtractionResult,
     ReviewBatchResult,
     ReviewVerdict,
@@ -127,15 +126,19 @@ Output valid JSON matching the ReviewBatchResult schema."""
 def build_review_prompt(candidates: list[dict[str, Any]]) -> str:
     """Build a review prompt for a batch of candidates."""
     import json
+
     candidates_json = json.dumps(
-        [{
-            "index": i,
-            "content": c.get("content", ""),
-            "memory_type": c.get("type", c.get("memory_type", "episodic")),
-            "room": c.get("room", "general"),
-            "importance": c.get("score", c.get("importance", 0.5)),
-            "entities": c.get("entities", []),
-        } for i, c in enumerate(candidates)],
+        [
+            {
+                "index": i,
+                "content": c.get("content", ""),
+                "memory_type": c.get("type", c.get("memory_type", "episodic")),
+                "room": c.get("room", "general"),
+                "importance": c.get("score", c.get("importance", 0.5)),
+                "entities": c.get("entities", []),
+            }
+            for i, c in enumerate(candidates)
+        ],
         ensure_ascii=False,
         indent=2,
     )
@@ -183,7 +186,7 @@ def review_candidates(
     batch_size = 20
 
     for i in range(0, len(candidates), batch_size):
-        batch = candidates[i:i + batch_size]
+        batch = candidates[i : i + batch_size]
         prompt = build_review_prompt(batch)
 
         result = llm.generate_structured(
@@ -197,16 +200,21 @@ def review_candidates(
             logger.warning("LLM review batch %d failed.", i // batch_size)
             # Fall back: promote all with default scores
             for c in batch:
-                all_verdicts.append(ReviewVerdict(
-                    action="promote",
-                    importance_score=c.get("score", 0.5),
-                    reasoning="LLM unavailable — auto-promoted.",
-                ))
+                all_verdicts.append(
+                    ReviewVerdict(
+                        action="promote",
+                        importance_score=c.get("score", 0.5),
+                        reasoning="LLM unavailable — auto-promoted.",
+                    )
+                )
         else:
             all_verdicts.extend(result.verdicts)
 
-    logger.info("LLM reviewed %d candidates across %d batches.", len(all_verdicts),
-                (len(candidates) + batch_size - 1) // batch_size)
+    logger.info(
+        "LLM reviewed %d candidates across %d batches.",
+        len(all_verdicts),
+        (len(candidates) + batch_size - 1) // batch_size,
+    )
     return ReviewBatchResult(verdicts=all_verdicts)
 
 
@@ -229,14 +237,18 @@ Output valid JSON matching the ConsolidationPlan schema."""
 def build_consolidation_prompt(memories: list[dict[str, Any]]) -> str:
     """Build a consolidation prompt for a set of memories."""
     import json
+
     memories_json = json.dumps(
-        [{
-            "id": m.get("id", ""),
-            "content": m.get("content", m.get("document", "")),
-            "room": m.get("room", "general"),
-            "filed_at": m.get("filed_at", m.get("created_at", "")),
-            "importance": m.get("importance", m.get("score", 0.5)),
-        } for m in memories],
+        [
+            {
+                "id": m.get("id", ""),
+                "content": m.get("content", m.get("document", "")),
+                "room": m.get("room", "general"),
+                "filed_at": m.get("filed_at", m.get("created_at", "")),
+                "importance": m.get("importance", m.get("score", 0.5)),
+            }
+            for m in memories
+        ],
         ensure_ascii=False,
         indent=2,
     )
@@ -287,7 +299,7 @@ def consolidate_memories(
     batch_size = 50
 
     for i in range(0, len(memories), batch_size):
-        batch = memories[i:i + batch_size]
+        batch = memories[i : i + batch_size]
         prompt = build_consolidation_prompt(batch)
 
         result = llm.generate_structured(
@@ -331,13 +343,17 @@ Output valid JSON matching the DailySummary schema:
 def build_summary_prompt(memories: list[dict[str, Any]], date_str: str) -> str:
     """Build a summary prompt for daily consolidation."""
     import json
+
     memories_json = json.dumps(
-        [{
-            "content": m.get("content", m.get("document", "")),
-            "room": m.get("room", "general"),
-            "importance": m.get("importance", m.get("score", 0.5)),
-            "memory_type": m.get("memory_type", "episodic"),
-        } for m in memories[:100]],  # Limit to 100 most recent
+        [
+            {
+                "content": m.get("content", m.get("document", "")),
+                "room": m.get("room", "general"),
+                "importance": m.get("importance", m.get("score", 0.5)),
+                "memory_type": m.get("memory_type", "episodic"),
+            }
+            for m in memories[:100]
+        ],  # Limit to 100 most recent
         ensure_ascii=False,
         indent=2,
     )
@@ -368,7 +384,9 @@ def summarize_daily(
         DailySummary, or None if LLM unavailable.
     """
     if not memories:
-        return DailySummary(date=date_str or datetime.now(timezone.utc).strftime("%Y-%m-%d"), total_memories=0)
+        return DailySummary(
+            date=date_str or datetime.now(timezone.utc).strftime("%Y-%m-%d"), total_memories=0
+        )
 
     llm = client or get_llm_client()
 
@@ -391,12 +409,16 @@ def summarize_daily(
         logger.warning("LLM daily summary failed.")
         return None
 
-    logger.info("LLM daily summary generated: %d memories across %d rooms.",
-                result.total_memories, len(result.by_room))
+    logger.info(
+        "LLM daily summary generated: %d memories across %d rooms.",
+        result.total_memories,
+        len(result.by_room),
+    )
     return result
 
 
 # ── Full Pipeline ─────────────────────────────────────────────────────
+
 
 def run_llm_pipeline(
     palace: "MemPalace",
@@ -420,6 +442,7 @@ def run_llm_pipeline(
         EvolutionReport with details from each step.
     """
     import time
+
     start_time = time.time()
     llm = client or get_llm_client()
     llm_used = llm.available
@@ -435,15 +458,17 @@ def run_llm_pipeline(
             extraction = extract_candidates(transcript, client=llm)
             if extraction and extraction.candidates:
                 candidates = extraction.candidates
-                steps.append(EvolutionStep(
-                    step="extract",
-                    status="success",
-                    details={
-                        "candidates_found": len(candidates),
-                        "llm": llm_used,
-                        "summary": extraction.summary,
-                    },
-                ))
+                steps.append(
+                    EvolutionStep(
+                        step="extract",
+                        status="success",
+                        details={
+                            "candidates_found": len(candidates),
+                            "llm": llm_used,
+                            "summary": extraction.summary,
+                        },
+                    )
+                )
 
                 # Step 2: Review
                 candidate_dicts = [c.model_dump() for c in candidates]
@@ -457,28 +482,32 @@ def run_llm_pipeline(
                         if v.action == "drop":
                             dropped_count += 1
                         elif v.action == "promote":
-                            promoted_items.append({
-                                "content": v.revised_content or "",
-                                "room": v.suggested_room,
-                                "metadata": {
-                                    "source": "llm-evolution",
-                                    "importance": v.importance_score,
-                                    "entities": v.entities,
-                                    "reasoning": v.reasoning,
-                                },
-                            })
+                            promoted_items.append(
+                                {
+                                    "content": v.revised_content or "",
+                                    "room": v.suggested_room,
+                                    "metadata": {
+                                        "source": "llm-evolution",
+                                        "importance": v.importance_score,
+                                        "entities": v.entities,
+                                        "reasoning": v.reasoning,
+                                    },
+                                }
+                            )
                         elif v.action == "revise" and v.revised_content:
-                            promoted_items.append({
-                                "content": v.revised_content,
-                                "room": v.suggested_room,
-                                "metadata": {
-                                    "source": "llm-evolution",
-                                    "importance": v.importance_score,
-                                    "entities": v.entities,
-                                    "reasoning": v.reasoning,
-                                    "revised": True,
-                                },
-                            })
+                            promoted_items.append(
+                                {
+                                    "content": v.revised_content,
+                                    "room": v.suggested_room,
+                                    "metadata": {
+                                        "source": "llm-evolution",
+                                        "importance": v.importance_score,
+                                        "entities": v.entities,
+                                        "reasoning": v.reasoning,
+                                        "revised": True,
+                                    },
+                                }
+                            )
 
                     # Batch promote
                     if promoted_items:
@@ -499,44 +528,54 @@ def run_llm_pipeline(
 
                     dropped = dropped_count
 
-                    steps.append(EvolutionStep(
-                        step="review",
-                        status="success",
-                        details={
-                            "promoted": promoted,
-                            "dropped": dropped,
-                            "pending": len(candidates) - promoted - dropped,
-                            "llm": llm_used,
-                        },
-                    ))
+                    steps.append(
+                        EvolutionStep(
+                            step="review",
+                            status="success",
+                            details={
+                                "promoted": promoted,
+                                "dropped": dropped,
+                                "pending": len(candidates) - promoted - dropped,
+                                "llm": llm_used,
+                            },
+                        )
+                    )
                 else:
                     # No LLM review — use rule-based fallback
-                    steps.append(EvolutionStep(
-                        step="review",
-                        status="skipped",
-                        details={"reason": "No LLM available for review."},
-                    ))
+                    steps.append(
+                        EvolutionStep(
+                            step="review",
+                            status="skipped",
+                            details={"reason": "No LLM available for review."},
+                        )
+                    )
             else:
                 # No LLM extraction
-                steps.append(EvolutionStep(
-                    step="extract",
-                    status="skipped",
-                    details={"reason": "No LLM available for extraction."},
-                ))
+                steps.append(
+                    EvolutionStep(
+                        step="extract",
+                        status="skipped",
+                        details={"reason": "No LLM available for extraction."},
+                    )
+                )
         except Exception as e:
             logger.error("LLM pipeline extraction/review failed: %s", e)
             errors.append(f"extract/review: {e}")
-            steps.append(EvolutionStep(
-                step="extract_review",
-                status="error",
-                details={"error": str(e)},
-            ))
+            steps.append(
+                EvolutionStep(
+                    step="extract_review",
+                    status="error",
+                    details={"error": str(e)},
+                )
+            )
     else:
-        steps.append(EvolutionStep(
-            step="extract",
-            status="skipped",
-            details={"reason": "No transcript provided."},
-        ))
+        steps.append(
+            EvolutionStep(
+                step="extract",
+                status="skipped",
+                details={"reason": "No transcript provided."},
+            )
+        )
 
     # Step 3: Consolidation
     try:
@@ -547,13 +586,15 @@ def run_llm_pipeline(
             if all_items and all_items.get("ids"):
                 memory_dicts: list[dict[str, Any]] = []
                 for i, doc_id in enumerate(all_items["ids"]):
-                    memory_dicts.append({
-                        "id": doc_id,
-                        "content": all_items["documents"][i],
-                        "room": all_items["metadatas"][i].get("room", "general"),
-                        "filed_at": all_items["metadatas"][i].get("filed_at", ""),
-                        "importance": all_items["metadatas"][i].get("importance", 0.5),
-                    })
+                    memory_dicts.append(
+                        {
+                            "id": doc_id,
+                            "content": all_items["documents"][i],
+                            "room": all_items["metadatas"][i].get("room", "general"),
+                            "filed_at": all_items["metadatas"][i].get("filed_at", ""),
+                            "importance": all_items["metadatas"][i].get("importance", 0.5),
+                        }
+                    )
 
                 consolidation = consolidate_memories(memory_dicts, client=llm)
 
@@ -580,32 +621,38 @@ def run_llm_pipeline(
                         except Exception as e:
                             errors.append(f"merge: {e}")
 
-                    steps.append(EvolutionStep(
-                        step="consolidation",
-                        status="success",
-                        details={
-                            "merges_applied": merged,
-                            "stalls_identified": len(consolidation.stalls),
-                            "llm": llm_used,
-                            "reason": consolidation.reason,
-                        },
-                    ))
+                    steps.append(
+                        EvolutionStep(
+                            step="consolidation",
+                            status="success",
+                            details={
+                                "merges_applied": merged,
+                                "stalls_identified": len(consolidation.stalls),
+                                "llm": llm_used,
+                                "reason": consolidation.reason,
+                            },
+                        )
+                    )
                 elif consolidation:
-                    steps.append(EvolutionStep(
-                        step="consolidation",
-                        status="success",
-                        details={
-                            "merges_applied": 0,
-                            "stalls_identified": len(consolidation.stalls),
-                            "reason": consolidation.reason,
-                        },
-                    ))
+                    steps.append(
+                        EvolutionStep(
+                            step="consolidation",
+                            status="success",
+                            details={
+                                "merges_applied": 0,
+                                "stalls_identified": len(consolidation.stalls),
+                                "reason": consolidation.reason,
+                            },
+                        )
+                    )
                 else:
-                    steps.append(EvolutionStep(
-                        step="consolidation",
-                        status="skipped",
-                        details={"reason": "No LLM available for consolidation."},
-                    ))
+                    steps.append(
+                        EvolutionStep(
+                            step="consolidation",
+                            status="skipped",
+                            details={"reason": "No LLM available for consolidation."},
+                        )
+                    )
     except Exception as e:
         logger.warning("LLM consolidation failed: %s", e)
         errors.append(f"consolidation: {e}")
@@ -615,6 +662,7 @@ def run_llm_pipeline(
         collection = palace._collection
         if collection:
             from mempalace_evolve.core.consolidation import get_today_drawers
+
             today_memories = get_today_drawers(collection)
             if today_memories:
                 memory_dicts = [
@@ -628,34 +676,40 @@ def run_llm_pipeline(
                 ]
                 summary = summarize_daily(memory_dicts, client=llm)
                 if summary:
-                    steps.append(EvolutionStep(
-                        step="daily_summary",
-                        status="success",
-                        details={
-                            "total_memories": summary.total_memories,
-                            "by_room": summary.by_room,
-                            "key_decisions": summary.key_decisions,
-                            "action_items": summary.action_items,
-                            "narrative": summary.narrative,
-                            "llm": llm_used,
-                        },
-                    ))
+                    steps.append(
+                        EvolutionStep(
+                            step="daily_summary",
+                            status="success",
+                            details={
+                                "total_memories": summary.total_memories,
+                                "by_room": summary.by_room,
+                                "key_decisions": summary.key_decisions,
+                                "action_items": summary.action_items,
+                                "narrative": summary.narrative,
+                                "llm": llm_used,
+                            },
+                        )
+                    )
                 else:
-                    steps.append(EvolutionStep(
-                        step="daily_summary",
-                        status="skipped",
-                        details={"reason": "No LLM available."},
-                    ))
+                    steps.append(
+                        EvolutionStep(
+                            step="daily_summary",
+                            status="skipped",
+                            details={"reason": "No LLM available."},
+                        )
+                    )
     except Exception as e:
         logger.warning("Daily summary failed: %s", e)
         errors.append(f"daily_summary: {e}")
 
     duration_ms = int((time.time() - start_time) * 1000)
-    steps.append(EvolutionStep(
-        step="complete",
-        status="success" if not errors else "warning",
-        details={"duration_ms": duration_ms, "errors": len(errors)},
-    ))
+    steps.append(
+        EvolutionStep(
+            step="complete",
+            status="success" if not errors else "warning",
+            details={"duration_ms": duration_ms, "errors": len(errors)},
+        )
+    )
 
     return EvolutionReport(
         steps=steps,

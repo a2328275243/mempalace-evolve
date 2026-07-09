@@ -13,7 +13,6 @@ import logging
 import math
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 
 from mempalace_evolve.core.config import get_config
 
@@ -32,8 +31,10 @@ def _safe_float(value, default: float = 0.0) -> float:
 # 1. 时间衰减评分
 # ---------------------------------------------------------------------------
 
-def decay_score(importance: float, last_accessed: str, filed_at: str,
-                decay_lambda: float = 0.02) -> float:
+
+def decay_score(
+    importance: float, last_accessed: str, filed_at: str, decay_lambda: float = 0.02
+) -> float:
     """计算衰减后的记忆评分。
 
     score = importance * e^(-λ * days_since_last_access)
@@ -132,6 +133,7 @@ def touch_drawers(collection, drawer_ids: list) -> int:
 # 3. 渐进压缩
 # ---------------------------------------------------------------------------
 
+
 def find_compress_candidates(collection, compress_after_days: int = 60) -> dict:
     """找出超过 N 天未访问的 drawers，按 room 分组。
 
@@ -194,20 +196,21 @@ def compress_text_block(docs: list, max_chars: int = 800) -> str:
         for sep in ["。", "？", "！", ".", "?", "!", "\n"]:
             idx = stripped.find(sep)
             if idx > 0:
-                first_sentences.append(stripped[:idx + 1].strip())
+                first_sentences.append(stripped[: idx + 1].strip())
                 break
         else:
             first_sentences.append(stripped[:100].strip())
 
     summary = "\n".join(f"- {s}" for s in first_sentences)
     if len(summary) > max_chars:
-        summary = summary[:max_chars - 3] + "..."
+        summary = summary[: max_chars - 3] + "..."
 
     return summary
 
 
-def compress_candidates(collection, candidates: dict, archive_collection,
-                        max_summary_chars: int = 800) -> dict:
+def compress_candidates(
+    collection, candidates: dict, archive_collection, max_summary_chars: int = 800
+) -> dict:
     """对同一 room 的多个候选执行压缩。
 
     1. 原文移入 archive_collection
@@ -236,7 +239,9 @@ def compress_candidates(collection, candidates: dict, archive_collection,
 
         try:
             archive_collection.add(
-                ids=archive_ids, documents=archive_docs, metadatas=archive_metas,
+                ids=archive_ids,
+                documents=archive_docs,
+                metadatas=archive_metas,
             )
         except Exception:
             logger.debug("archive add failed for room=%s", room, exc_info=True)
@@ -244,12 +249,12 @@ def compress_candidates(collection, candidates: dict, archive_collection,
 
         # 创建摘要
         summary = compress_text_block(
-            [d for _, d, _ in entries], max_summary_chars,
+            [d for _, d, _ in entries],
+            max_summary_chars,
         )
         wing = entries[0][2].get("wing", "unknown")
         summary_id = (
-            f"drawer_{wing}_{room}_summary_"
-            f"{hashlib.md5(summary.encode()).hexdigest()[:12]}"
+            f"drawer_{wing}_{room}_summary_{hashlib.md5(summary.encode()).hexdigest()[:12]}"
         )
         summary_meta = {
             "wing": wing,
@@ -259,9 +264,7 @@ def compress_candidates(collection, candidates: dict, archive_collection,
             "added_by": "lifecycle_compress",
             "filed_at": entries[0][2].get("filed_at", now_iso),
             "last_accessed": now_iso,
-            "importance": min(
-                _safe_float(m.get("importance"), 3) for _, _, m in entries
-            ),
+            "importance": min(_safe_float(m.get("importance"), 3) for _, _, m in entries),
             "is_summary": True,
             "source_drawer_count": len(entries),
         }
@@ -290,8 +293,8 @@ def compress_candidates(collection, candidates: dict, archive_collection,
 # 4. 准入控制
 # ---------------------------------------------------------------------------
 
-def check_admission(collection, wing: str,
-                    max_total: int = 500, max_per_wing: int = 200) -> dict:
+
+def check_admission(collection, wing: str, max_total: int = 500, max_per_wing: int = 200) -> dict:
     """检查是否允许写入新 drawer。"""
     total = collection.count()
 
@@ -325,6 +328,7 @@ def check_admission(collection, wing: str,
 # ---------------------------------------------------------------------------
 # 5. 数据迁移
 # ---------------------------------------------------------------------------
+
 
 def migrate_legacy_drawers(collection) -> dict:
     """为没有 last_accessed 字段的 drawers 补充该字段（用 filed_at 初始化）。
@@ -367,7 +371,9 @@ def migrate_legacy_drawers(collection) -> dict:
         if update_ids:
             try:
                 collection.update(
-                    ids=update_ids, documents=update_docs, metadatas=update_metas,
+                    ids=update_ids,
+                    documents=update_docs,
+                    metadatas=update_metas,
                 )
             except Exception:
                 migrated -= len(update_ids)
@@ -384,10 +390,15 @@ def migrate_legacy_drawers(collection) -> dict:
 # 6. TTL 过期删除
 # ---------------------------------------------------------------------------
 
-def find_ttl_expired(collection, ttl_days: int = 90, ttl_summary_days: int = 180,
-                     min_importance: float = 0.25,
-                     protected_rooms: list = None,
-                     wing: str | None = None) -> list:
+
+def find_ttl_expired(
+    collection,
+    ttl_days: int = 90,
+    ttl_summary_days: int = 180,
+    min_importance: float = 0.25,
+    protected_rooms: list = None,
+    wing: str | None = None,
+) -> list:
     """找到满足 TTL 过期条件的 drawers。
 
     条件：last_accessed 超过 ttl_days 且 importance < min_importance。
@@ -440,20 +451,23 @@ def find_ttl_expired(collection, ttl_days: int = 90, ttl_summary_days: int = 180
             if days_since < applicable_ttl:
                 continue
 
-            importance = _safe_float(meta.get("enhanced_importance"),
-                                     _safe_float(meta.get("importance"), 0.5))
+            importance = _safe_float(
+                meta.get("enhanced_importance"), _safe_float(meta.get("importance"), 0.5)
+            )
             if importance >= min_importance:
                 continue
 
-            expired.append({
-                "id": doc_id,
-                "room": room,
-                "wing": meta.get("wing", "unknown"),
-                "days_since_access": days_since,
-                "importance": importance,
-                "is_summary": is_summary,
-                "content_preview": batch["documents"][i][:100],
-            })
+            expired.append(
+                {
+                    "id": doc_id,
+                    "room": room,
+                    "wing": meta.get("wing", "unknown"),
+                    "days_since_access": days_since,
+                    "importance": importance,
+                    "is_summary": is_summary,
+                    "content_preview": batch["documents"][i][:100],
+                }
+            )
 
         if len(batch["ids"]) < batch_size:
             break
@@ -486,6 +500,7 @@ if __name__ == "__main__":
 
     from mempalace_evolve.core.chroma_helper import get_collection
     from mempalace_evolve.core.config import GLOBAL_CHROMA
+
     col = get_collection(str(GLOBAL_CHROMA))
 
     if args.command == "migrate":
@@ -510,10 +525,14 @@ if __name__ == "__main__":
                             if accessed.tzinfo is None:
                                 accessed = accessed.replace(tzinfo=timezone.utc)
                             days = (now - accessed).days
-                            if days <= 7: buckets["active_7d"] += 1
-                            if days <= 30: buckets["active_30d"] += 1
-                            if days >= 60: buckets["stale_60d"] += 1
-                            if days >= 90: buckets["ancient_90d"] += 1
+                            if days <= 7:
+                                buckets["active_7d"] += 1
+                            if days <= 30:
+                                buckets["active_30d"] += 1
+                            if days >= 60:
+                                buckets["stale_60d"] += 1
+                            if days >= 90:
+                                buckets["ancient_90d"] += 1
                         except (ValueError, TypeError):
                             pass
                 if len(batch["ids"]) < 500:
@@ -529,7 +548,7 @@ if __name__ == "__main__":
         lc = config.lifecycle_config
         candidates = find_compress_candidates(col, lc["compress_after_days"])
         if dry_run:
-            print(f"DRY RUN — 压缩候选:")
+            print("DRY RUN — 压缩候选:")
             total_cand = 0
             for room, entries in sorted(candidates.items()):
                 print(f"  {room}: {len(entries)} drawers")
@@ -537,11 +556,15 @@ if __name__ == "__main__":
             print(f"  总计: {total_cand} 个候选")
         else:
             import chromadb
+
             client = chromadb.PersistentClient(path=str(GLOBAL_CHROMA))
             archive_col = client.get_or_create_collection(
-                "mempalace_archived", metadata={"hnsw:space": "cosine"},
+                "mempalace_archived",
+                metadata={"hnsw:space": "cosine"},
             )
-            stats = compress_candidates(col, candidates, archive_col, lc["compress_max_summary_chars"])
+            stats = compress_candidates(
+                col, candidates, archive_col, lc["compress_max_summary_chars"]
+            )
             print(f"压缩完成: {stats}")
 
     elif args.command == "test-decay":

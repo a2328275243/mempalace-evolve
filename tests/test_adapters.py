@@ -381,6 +381,7 @@ class TestMCPServer:
             tools = asyncio.run(mcp.list_tools())
             names = {tool.name for tool in tools}
             assert {"remember", "recall", "forget"}.issubset(names)
+            assert {"batch_remember", "batch_recall", "batch_forget"}.issubset(names)
             assert {"purge_expired", "compress_old_memories", "consolidate"}.issubset(names)
         except ImportError:
             pass
@@ -410,6 +411,58 @@ class TestMCPServer:
             assert meta["source_file"] == "mcp-test-source"
             assert meta["tags"] == "mcp,agent"
             assert meta["expire_at"] > datetime.now(timezone.utc).timestamp()
+        except ImportError:
+            pass
+
+    def test_mcp_batch_memory_tools(self, tmp_palace):
+        try:
+            from mempalace_evolve.adapters.mcp_server import create_mcp_server
+            from mempalace_evolve.sdk import MemPalace
+
+            mcp = create_mcp_server(palace_path=tmp_palace, wing="test_mcp")
+            stored = asyncio.run(mcp.call_tool("batch_remember", {
+                "memories": [
+                    {
+                        "content": "MCP batch target",
+                        "room": "config",
+                        "metadata": {"priority": "high"},
+                        "source": "mcp-batch-config",
+                        "ttl": 3600,
+                        "tags": ["mcp", "batch"],
+                    },
+                    {
+                        "content": "MCP batch target",
+                        "room": "decisions",
+                        "source": "mcp-batch-decision",
+                    },
+                ],
+            }))
+            store_data = self._tool_json(stored)
+            assert store_data["stored"] == 2
+
+            palace = MemPalace(tmp_palace, wing="test_mcp")
+            col = palace._get_collection()
+            batch = col.get(where={"source_file": "mcp-batch-config"}, include=["metadatas"])
+            meta = batch["metadatas"][0]
+            assert meta["priority"] == "high"
+            assert meta["tags"] == "mcp,batch"
+            assert meta["expire_at"] > datetime.now(timezone.utc).timestamp()
+
+            recalled = asyncio.run(mcp.call_tool("batch_recall", {
+                "queries": ["MCP batch target"],
+                "room": "config",
+                "limit": 5,
+            }))
+            recall_data = self._tool_json(recalled)
+            memories = recall_data["results"][0]["memories"]
+            assert len(memories) >= 1
+            assert all(m["metadata"].get("room") == "config" for m in memories)
+
+            deleted = asyncio.run(mcp.call_tool("batch_forget", {
+                "memory_ids": store_data["ids"],
+            }))
+            delete_data = self._tool_json(deleted)
+            assert delete_data["deleted"] == 2
         except ImportError:
             pass
 

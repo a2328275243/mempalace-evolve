@@ -93,14 +93,16 @@ def get_memories_due_for_review(collection, wing: str, as_of: datetime | None = 
 
         next_review = meta.get("next_review")
         if not next_review:
-            due_memories.append({
-                "id": doc_id,
-                "content": data["documents"][i],
-                "room": meta.get("room", "general"),
-                "interval_days": INITIAL_INTERVAL_DAYS,
-                "last_reviewed": meta.get("filed_at"),
-                "recall_count": recall_count,
-            })
+            due_memories.append(
+                {
+                    "id": doc_id,
+                    "content": data["documents"][i],
+                    "room": meta.get("room", "general"),
+                    "interval_days": INITIAL_INTERVAL_DAYS,
+                    "last_reviewed": meta.get("filed_at"),
+                    "recall_count": recall_count,
+                }
+            )
             continue
 
         try:
@@ -108,14 +110,16 @@ def get_memories_due_for_review(collection, wing: str, as_of: datetime | None = 
             if review_dt <= as_of:
                 recall_count = meta.get("recall_count", 0)
                 interval_days = get_interval_days(meta.get("interval_days"), recall_count)
-                due_memories.append({
-                    "id": doc_id,
-                    "content": data["documents"][i],
-                    "room": meta.get("room", "general"),
-                    "interval_days": interval_days,
-                    "last_reviewed": next_review,
-                    "recall_count": recall_count,
-                })
+                due_memories.append(
+                    {
+                        "id": doc_id,
+                        "content": data["documents"][i],
+                        "room": meta.get("room", "general"),
+                        "interval_days": interval_days,
+                        "last_reviewed": next_review,
+                        "recall_count": recall_count,
+                    }
+                )
         except (ValueError, AttributeError):
             continue
 

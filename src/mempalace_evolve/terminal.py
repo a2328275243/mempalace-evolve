@@ -1,16 +1,18 @@
 """Terminal output utilities — ANSI colors, no external dependencies."""
+
 import os
 import sys
 
 # Detect ANSI support
-_SUPPORTS_COLOR = (
-    hasattr(sys.stdout, "isatty") and sys.stdout.isatty()
-) or os.environ.get("FORCE_COLOR", "").lower() in ("1", "true", "yes")
+_SUPPORTS_COLOR = (hasattr(sys.stdout, "isatty") and sys.stdout.isatty()) or os.environ.get(
+    "FORCE_COLOR", ""
+).lower() in ("1", "true", "yes")
 
 # Windows: enable VT100 escape sequences and UTF-8 output
 if sys.platform == "win32":
     try:
         import ctypes
+
         kernel32 = ctypes.windll.kernel32
         kernel32.SetConsoleMode(kernel32.GetStdHandle(-11), 7)
     except Exception:

@@ -65,7 +65,6 @@ def text_overlap_similarity(text_a: str, text_b: str, min_overlap_ratio: float =
     return min(1.0, score)
 
 
-
 def find_similar_memories(
     collection,
     wing: str,
@@ -127,14 +126,16 @@ def find_similar_memories(
             combined_similarity = round(0.6 * similarity + 0.4 * overlap_score, 3)
             if combined_similarity < threshold:
                 continue
-            similar.append({
-                "id": doc_id,
-                "content": existing_content,
-                "room": results["metadatas"][0][i].get("room", "general"),
-                "similarity": combined_similarity,
-                "distance": distance,
-                "text_overlap": round(overlap_score, 3),
-            })
+            similar.append(
+                {
+                    "id": doc_id,
+                    "content": existing_content,
+                    "room": results["metadatas"][0][i].get("room", "general"),
+                    "similarity": combined_similarity,
+                    "distance": distance,
+                    "text_overlap": round(overlap_score, 3),
+                }
+            )
 
     return similar
 

@@ -56,11 +56,12 @@ def main():
     p_setup.add_argument("--wing", default=None, help="Wing/project name")
     p_setup.add_argument("--palace", default=None, help="Palace storage path")
 
-
     # mempalace ingest <directory> [--recursive] [--room ...] [--force]
     p_ingest = sub.add_parser("ingest", help="Ingest files into memory palace")
     p_ingest.add_argument("directory", help="Directory to scan for files")
-    p_ingest.add_argument("--recursive", action="store_true", default=True, help="Recurse subdirectories")
+    p_ingest.add_argument(
+        "--recursive", action="store_true", default=True, help="Recurse subdirectories"
+    )
     p_ingest.add_argument("--room", default="documents", help="Target room for chunks")
     p_ingest.add_argument("--chunk-size", type=int, default=1000, help="Max chars per chunk")
     p_ingest.add_argument("--force", action="store_true", help="Re-index all files")
@@ -68,7 +69,9 @@ def main():
 
     # mempalace sources list [--palace ...]
     p_sources = sub.add_parser("sources", help="Tracked source documents")
-    p_sources.add_argument("action", nargs="?", default="list", choices=["list", "stats"], help="Action: list | stats")
+    p_sources.add_argument(
+        "action", nargs="?", default="list", choices=["list", "stats"], help="Action: list | stats"
+    )
     p_sources.add_argument("--palace", default=None, help="Palace path")
     # mempalace export --format json --output memories.json
     p_exp = sub.add_parser("export", help="Export memories to JSON or Markdown")
@@ -101,14 +104,15 @@ def main():
     p_purge.add_argument("--palace", default=None, help="Palace path")
 
     p_compress = sub.add_parser("compress", help="Compress old, unused memories")
-    p_compress.add_argument("--after-days", type=int, default=60, help="Age threshold for compression")
+    p_compress.add_argument(
+        "--after-days", type=int, default=60, help="Age threshold for compression"
+    )
     p_compress.add_argument("--max-chars", type=int, default=800, help="Max summary characters")
     p_compress.add_argument("--palace", default=None, help="Palace path")
 
     p_conso = sub.add_parser("consolidate", help="Deduplicate and merge similar memories")
     p_conso.add_argument("--dry-run", action="store_true", help="Only preview what would be merged")
     p_conso.add_argument("--palace", default=None, help="Palace path")
-
 
     args = parser.parse_args()
 
@@ -119,27 +123,33 @@ def main():
     # Commands that don't need a palace instance
     if args.command == "demo":
         from mempalace_evolve.demo import run_demo
+
         run_demo(keep_data=args.keep)
         return
     if args.command == "doctor":
         from mempalace_evolve.doctor import run_doctor
+
         ok = run_doctor()
         sys.exit(0 if ok else 1)
     if args.command == "playground":
         from mempalace_evolve.playground import run_playground
+
         run_playground(palace_path=args.palace)
         return
     if args.command == "setup":
         from mempalace_evolve.setup_wizard import run_setup
+
         ok = run_setup(wing=args.wing, palace_path=args.palace)
         sys.exit(0 if ok else 1)
 
     # Commands that need a palace instance
     try:
         from mempalace_evolve.sdk import MemPalace
+
         palace = MemPalace(args.palace)
     except Exception as e:
         from mempalace_evolve.terminal import red, dim
+
         print(red(f"\n  Error: {e}"))
         print(dim("  Run 'mempalace doctor' to diagnose.\n"))
         sys.exit(1)
@@ -153,18 +163,20 @@ def main():
             print(f"  [{r.get('distance', '?'):.3f}] {r.get('content', '')[:100]}")
     elif args.command == "serve":
         from mempalace_evolve.adapters.rest_api import serve
-        serve(host=args.host, port=args.port, palace_path=args.palace,
-              api_key=args.api_key)
+
+        serve(host=args.host, port=args.port, palace_path=args.palace, api_key=args.api_key)
     elif args.command == "evolve":
         report = palace.evolve()
         print(f"Evolution: {report['promoted']} promoted, {report['dropped']} dropped")
     elif args.command == "ingest":
         from mempalace_evolve.ingest import ingest_directory
+
         # Create a palace instance
         palace_kwargs = {}
         if args.palace:
             palace_kwargs["palace_path"] = args.palace
         from mempalace_evolve.sdk import MemPalace
+
         p = MemPalace(**palace_kwargs)
         summary = ingest_directory(
             args.directory,
@@ -174,9 +186,12 @@ def main():
             chunk_size=args.chunk_size,
             force=args.force,
         )
-        print(f"Ingest complete: {summary.indexed} indexed, {summary.skipped} skipped, {summary.errors} errors (of {summary.total_files})")
+        print(
+            f"Ingest complete: {summary.indexed} indexed, {summary.skipped} skipped, {summary.errors} errors (of {summary.total_files})"
+        )
     elif args.command == "sources":
         from mempalace_evolve.ingest import list_sources
+
         palace_path = args.palace or "."
         sources = list_sources(palace_path)
         if args.action == "list":
@@ -210,7 +225,7 @@ def main():
         else:
             # Show memories due for review
             print(f"Memories due for review: {len(due)}")
-            for mem in due[:args.limit]:
+            for mem in due[: args.limit]:
                 print(f"  [{mem['interval_index']}] {mem['content'][:80]}...")
     elif args.command == "top":
         top = palace.top_memories(args.n)
@@ -228,12 +243,15 @@ def main():
         print(json.dumps(result, indent=2, ensure_ascii=False))
 
     elif args.command == "compress":
-        result = palace.compress_old_memories(compress_after_days=args.after_days, max_chars=args.max_chars)
+        result = palace.compress_old_memories(
+            compress_after_days=args.after_days, max_chars=args.max_chars
+        )
         print(json.dumps(result, indent=2, ensure_ascii=False))
 
     elif args.command == "consolidate":
         result = palace.consolidate(dry_run=args.dry_run)
         print(json.dumps(result, indent=2, ensure_ascii=False))
+
 
 if __name__ == "__main__":
     main()

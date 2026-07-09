@@ -17,11 +17,11 @@ logger = logging.getLogger("mempalace_evolve.core.importance_scorer")
 
 # Score components weights (sum = 1.0)
 WEIGHTS = {
-    "recall_frequency": 0.30,    # How often recalled
-    "kg_centrality": 0.25,       # Knowledge graph connections
-    "recency": 0.20,             # Recently accessed
-    "cross_wing_hits": 0.15,     # Used by multiple projects
-    "content_quality": 0.10,     # Content-based signals (length, keywords)
+    "recall_frequency": 0.30,  # How often recalled
+    "kg_centrality": 0.25,  # Knowledge graph connections
+    "recency": 0.20,  # Recently accessed
+    "cross_wing_hits": 0.15,  # Used by multiple projects
+    "content_quality": 0.10,  # Content-based signals (length, keywords)
 }
 
 # Recency half-life in days
@@ -83,6 +83,7 @@ def _compute_recency_score(last_accessed: str | None) -> float:
 
     # Exponential decay: score = e^(-ln(2) * days / half_life)
     import math
+
     decay = math.exp(-math.log(2) * days_ago / RECENCY_HALF_LIFE_DAYS)
     return min(max(decay, 0.0), 1.0)
 
@@ -105,10 +106,20 @@ def _compute_content_score(content: str) -> float:
 
     # Keyword signals of important content
     important_keywords = [
-        "important", "remember", "critical", "decision",
-        "architecture", "design pattern", "security",
-        "error", "bug", "fix", "workaround",
-        "config", "setup", "install",
+        "important",
+        "remember",
+        "critical",
+        "decision",
+        "architecture",
+        "design pattern",
+        "security",
+        "error",
+        "bug",
+        "fix",
+        "workaround",
+        "config",
+        "setup",
+        "install",
     ]
     content_lower = content.lower()
     keyword_matches = sum(1 for kw in important_keywords if kw in content_lower)
@@ -180,12 +191,14 @@ def score_all_memories(palace) -> dict[str, Any]:
         except Exception:
             pass
 
-        scores.append({
-            "id": doc_id,
-            "score": round(score, 3),
-            "recall_count": recall_count,
-            "kg_degree": kg_degree,
-        })
+        scores.append(
+            {
+                "id": doc_id,
+                "score": round(score, 3),
+                "recall_count": recall_count,
+                "kg_degree": kg_degree,
+            }
+        )
 
     return {
         "scored": scored_count,

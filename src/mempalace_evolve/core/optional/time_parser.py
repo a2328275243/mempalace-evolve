@@ -67,6 +67,7 @@ def parse_time_string(time_str: str) -> Optional[datetime]:
     elif "ago" in time_str_lower:
         # Parse "X days/weeks/months ago"
         import re
+
         match = re.search(r"(\d+)\s+(day|week|month|year|hour|minute)s?\s+ago", time_str_lower)
         if match:
             amount = int(match.group(1))
@@ -88,9 +89,7 @@ def parse_time_string(time_str: str) -> Optional[datetime]:
 
 
 def time_overlap_score(
-    filed_at: str,
-    query_start: Union[str, datetime],
-    query_end: Union[str, datetime]
+    filed_at: str, query_start: Union[str, datetime], query_end: Union[str, datetime]
 ) -> float:
     """Calculate time-based relevance score.
 
@@ -149,8 +148,8 @@ def get_time_bonus_weight(decay_rate: str = "medium") -> float:
         Bonus weight (0.0 to 1.0)
     """
     rates = {
-        "fast": 0.3,    # Strong preference for recent
-        "medium": 0.2, # Balanced
-        "slow": 0.1,   # Slight preference for recent
+        "fast": 0.3,  # Strong preference for recent
+        "medium": 0.2,  # Balanced
+        "slow": 0.1,  # Slight preference for recent
     }
     return rates.get(decay_rate, 0.2)
