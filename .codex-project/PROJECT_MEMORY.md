@@ -248,11 +248,11 @@ Continue code/system optimization with another focused pass: inspect OpenAI/Lang
 
 ### 2026-07-17
 - User asked: Continue code/system optimization, use an existing E/F drive environment when possible, and verify every upload carefully.
-- Work completed: Reproduced and fixed FastAPI REST request-body parsing on current FastAPI/Pydantic releases by removing delayed annotations from `src/mempalace_evolve/adapters/rest_api.py`; preserved the remote memory ledger during rebase conflict resolution.
-- Files touched: `src/mempalace_evolve/adapters/rest_api.py`, `.codex-project/PROJECT_MEMORY.md`.
-- Verification: Baseline had 71 passed and 2 REST failures with `req` treated as a query parameter. Final local suite passed 73 tests; targeted Ruff check/format passed; package build produced wheel and sdist; `twine check` passed both; SDK import and `doctor` passed 4/4; README had no diff. `F:\ISTA\.venv` was inspected but is unusable because it points to a missing C: Python; verification used the D: workspace environment.
-- Result: Local commit `26e02a7` was rebased onto remote `61f57fc`; the rebased change is ready for final validation and push.
-- Next suggested move: rerun the final checks on the rebased tree, continue the rebase, push, and inspect GitHub Actions.
+- Work completed: Reproduced and fixed FastAPI REST request-body parsing on current FastAPI/Pydantic releases by removing delayed annotations from `src/mempalace_evolve/adapters/rest_api.py`; audited the rebased CI and added the missing package install before build-job import smoke in `.github/workflows/ci.yml`; preserved the remote memory ledger during rebase conflict resolution.
+- Files touched: `src/mempalace_evolve/adapters/rest_api.py`, `.github/workflows/ci.yml`, `.codex-project/PROJECT_MEMORY.md`.
+- Verification: Baseline had 71 passed and 2 REST failures with `req` treated as a query parameter. Latest-tree CI-equivalent coverage passed 647 tests with 11 skips; full Ruff check and format check passed; a direct REST TestClient probe returned HTTP 200; package build/twine, SDK import, and doctor checks had passed before rebase and will be rerun after the CI edit; README had no diff. `F:\ISTA\.venv` was inspected but is unusable because it points to a missing C: Python; verification used the D: workspace environment.
+- Result: Rebased REST fix is commit `5a32e0d`; the CI build import ordering fix is currently uncommitted and must be validated and committed before push.
+- Next suggested move: rerun build/import/doctor/twine after the CI edit, amend or follow with a focused commit, push, and inspect GitHub Actions.
 
 ## History Compression
 - 2026-07-10: Continued CI hardening after pushed commits `7fbb329`, `df5ec09`, and `6f94d0d`. GitHub Actions showed `Tests` green and `CI` failing only on `windows-latest` Python 3.12 during coverage tests; Ubuntu/macOS jobs and lint passed. Reproduced with repo-local uv Python 3.12 under `.uv_python` and `.venv312`; full Windows Python 3.12 suite passed locally (`655 passed, 9 skipped`), benchmark-only suite passed (`6 passed`), and the proposed Windows CI command with `--ignore=tests/benchmarks` passed (`649 passed, 9 skipped`). Updated CI to run all tests on Linux/macOS while excluding benchmark tests only on Windows runners, and ignored local uv/venv/coverage artifacts.

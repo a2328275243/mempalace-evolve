@@ -74,6 +74,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Install package
+        run: pip install -e .
       - name: Verify import
         run: python -c "import mempalace_evolve; print(f'mempalace_evolve {mempalace_evolve.__version__}')"
       - name: Verify SDK import
