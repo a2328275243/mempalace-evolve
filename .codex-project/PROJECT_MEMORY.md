@@ -246,6 +246,14 @@ Continue code/system optimization with another focused pass: inspect OpenAI/Lang
 - Result: Windows users no longer need to preinstall Node/Python if winget is available; otherwise the installer tells them exactly what to install.
 - Next suggested move: run a true clean-user install on another Windows machine using the GitHub release zip.
 
+### 2026-07-17
+- User asked: Continue code/system optimization, use an existing E/F drive environment when possible, and verify every upload carefully.
+- Work completed: Reproduced and fixed FastAPI REST request-body parsing on current FastAPI/Pydantic releases by removing delayed annotations from `src/mempalace_evolve/adapters/rest_api.py`; preserved the remote memory ledger during rebase conflict resolution.
+- Files touched: `src/mempalace_evolve/adapters/rest_api.py`, `.codex-project/PROJECT_MEMORY.md`.
+- Verification: Baseline had 71 passed and 2 REST failures with `req` treated as a query parameter. Final local suite passed 73 tests; targeted Ruff check/format passed; package build produced wheel and sdist; `twine check` passed both; SDK import and `doctor` passed 4/4; README had no diff. `F:\ISTA\.venv` was inspected but is unusable because it points to a missing C: Python; verification used the D: workspace environment.
+- Result: Local commit `26e02a7` was rebased onto remote `61f57fc`; the rebased change is ready for final validation and push.
+- Next suggested move: rerun the final checks on the rebased tree, continue the rebase, push, and inspect GitHub Actions.
+
 ## History Compression
 - 2026-07-10: Continued CI hardening after pushed commits `7fbb329`, `df5ec09`, and `6f94d0d`. GitHub Actions showed `Tests` green and `CI` failing only on `windows-latest` Python 3.12 during coverage tests; Ubuntu/macOS jobs and lint passed. Reproduced with repo-local uv Python 3.12 under `.uv_python` and `.venv312`; full Windows Python 3.12 suite passed locally (`655 passed, 9 skipped`), benchmark-only suite passed (`6 passed`), and the proposed Windows CI command with `--ignore=tests/benchmarks` passed (`649 passed, 9 skipped`). Updated CI to run all tests on Linux/macOS while excluding benchmark tests only on Windows runners, and ignored local uv/venv/coverage artifacts.
 - 2026-06-20: Integrated DreamSeed Code Lite Kernel terminal agent into the MemPalace Evolve repo, removed old desktop installer artifacts, pushed commit `f2481e5`, created release `dreamseed-code-v0.2.0` with `dreamseed-code-0.2.0-source.zip`.

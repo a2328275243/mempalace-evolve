@@ -8,8 +8,6 @@ Or programmatically:
     app = create_app("/path/to/palace")
 """
 
-from __future__ import annotations
-
 import secrets
 from typing import Any
 
