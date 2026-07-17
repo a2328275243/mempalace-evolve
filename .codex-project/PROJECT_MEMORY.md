@@ -254,6 +254,14 @@ Continue code/system optimization with another focused pass: inspect OpenAI/Lang
 - Result: Rebased REST fix is commit `5a32e0d`; the CI build import ordering fix is currently uncommitted and must be validated and committed before push.
 - Next suggested move: rerun build/import/doctor/twine after the CI edit, amend or follow with a focused commit, push, and inspect GitHub Actions.
 
+### 2026-07-17 (wing isolation pass)
+- User asked: Continue code/system optimization with strict full verification before upload; README contest header remains protected.
+- Work completed: Audited the REST/CLI startup path and found `mempalace serve` exposed no wing option and `serve()` dropped the configured wing before calling `create_app()`. Added `--wing` to the CLI, forwarded it through `serve()` to `create_app()`, and added regression tests for both forwarding boundaries. Research reference: Mem0 documents entity-scoped memory (`user_id`/`agent_id`/`app_id`/`run_id`) and Zep documents session/user-scoped memory, reinforcing explicit namespace propagation for isolation.
+- Files touched: `src/mempalace_evolve/adapters/rest_api.py`, `src/mempalace_evolve/cli.py`, `tests/test_cli.py`, `.codex-project/PROJECT_MEMORY.md`.
+- Verification: CLI/server targeted tests passed 5/5; CI-equivalent coverage passed 649 passed and 11 skipped; full Ruff check and format check passed; package build and twine checks passed; SDK import and doctor passed 4/4; README diff was empty; remote `Tests` and `CI` for `3a58661` both completed successfully.
+- Result: REST service startup now preserves project/tenant memory isolation from CLI invocation through app construction.
+- Next suggested move: audit another cross-adapter contract, likely REST/MCP streaming or metadata validation, then repeat the same full verification gate.
+
 ## History Compression
 - 2026-07-10: Continued CI hardening after pushed commits `7fbb329`, `df5ec09`, and `6f94d0d`. GitHub Actions showed `Tests` green and `CI` failing only on `windows-latest` Python 3.12 during coverage tests; Ubuntu/macOS jobs and lint passed. Reproduced with repo-local uv Python 3.12 under `.uv_python` and `.venv312`; full Windows Python 3.12 suite passed locally (`655 passed, 9 skipped`), benchmark-only suite passed (`6 passed`), and the proposed Windows CI command with `--ignore=tests/benchmarks` passed (`649 passed, 9 skipped`). Updated CI to run all tests on Linux/macOS while excluding benchmark tests only on Windows runners, and ignored local uv/venv/coverage artifacts.
 - 2026-06-20: Integrated DreamSeed Code Lite Kernel terminal agent into the MemPalace Evolve repo, removed old desktop installer artifacts, pushed commit `f2481e5`, created release `dreamseed-code-v0.2.0` with `dreamseed-code-0.2.0-source.zip`.

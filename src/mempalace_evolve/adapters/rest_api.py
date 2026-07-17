@@ -370,9 +370,10 @@ def serve(
     host: str = "0.0.0.0",
     port: int = 8765,
     palace_path: str | None = None,
+    wing: str = "global",
     api_key: str | None = None,
 ):
-    """Start the REST API server."""
+    """Start the REST API server for a specific memory wing."""
     try:
         import uvicorn
     except ImportError:
@@ -380,5 +381,5 @@ def serve(
             "Server requires uvicorn. Install with: pip install mempalace-evolve[api]"
         )
 
-    app = create_app(palace_path, api_key=api_key)
+    app = create_app(palace_path, wing=wing, api_key=api_key)
     uvicorn.run(app, host=host, port=port)

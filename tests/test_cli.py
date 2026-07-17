@@ -69,3 +69,65 @@ def test_cli_consolidate_dispatches_to_sdk(monkeypatch, capsys):
     assert FakePalace.calls == [
         ("consolidate", {"dry_run": True}),
     ]
+
+
+def test_cli_serve_forwards_wing(monkeypatch):
+    from mempalace_evolve import cli
+    import mempalace_evolve.sdk as sdk
+    import mempalace_evolve.adapters.rest_api as rest_api
+
+    calls = []
+    monkeypatch.setattr(sdk, "MemPalace", FakePalace)
+    monkeypatch.setattr(
+        rest_api,
+        "serve",
+        lambda **kwargs: calls.append(kwargs),
+    )
+    monkeypatch.setattr(
+        "sys.argv",
+        ["mempalace", "serve", "--wing", "project-alpha", "--palace", "tmp-palace"],
+    )
+
+    cli.main()
+
+    assert calls == [
+        {
+            "host": "0.0.0.0",
+            "port": 8765,
+            "palace_path": "tmp-palace",
+            "wing": "project-alpha",
+            "api_key": None,
+        }
+    ]
+
+
+def test_rest_serve_forwards_wing_to_app(monkeypatch, tmp_path):
+    import uvicorn
+    from mempalace_evolve.adapters import rest_api
+
+    captured = {}
+    fake_app = object()
+    monkeypatch.setattr(
+        rest_api,
+        "create_app",
+        lambda *args, **kwargs: captured.update(create=(args, kwargs)) or fake_app,
+    )
+    monkeypatch.setattr(
+        uvicorn,
+        "run",
+        lambda app, host, port: captured.update(run=(app, host, port)),
+    )
+
+    rest_api.serve(
+        host="127.0.0.1",
+        port=9876,
+        palace_path=str(tmp_path),
+        wing="project-beta",
+        api_key="secret",
+    )
+
+    assert captured["create"] == (
+        (str(tmp_path),),
+        {"wing": "project-beta", "api_key": "secret"},
+    )
+    assert captured["run"] == (fake_app, "127.0.0.1", 9876)
