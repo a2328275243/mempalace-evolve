@@ -24,7 +24,7 @@ def create_app(palace_path: str | None = None, wing: str = "global", api_key: st
     try:
         from fastapi import FastAPI, HTTPException, Request
         from fastapi.responses import JSONResponse, StreamingResponse
-        from pydantic import BaseModel
+        from pydantic import BaseModel, Field
     except ImportError:
         raise ImportError(
             "REST API requires fastapi. Install with: pip install mempalace-evolve[api]"
@@ -57,17 +57,19 @@ def create_app(palace_path: str | None = None, wing: str = "global", api_key: st
     # -- pydantic models --------------------------------------------------
 
     class RememberRequest(BaseModel):
-        content: str
-        room: str = "general"
+        content: str = Field(min_length=1, max_length=100_000)
+        room: str = Field(default="general", min_length=1, max_length=200)
         metadata: dict[str, Any] | None = None
         source: str = ""
-        ttl: int | None = None
+        ttl: int | None = Field(default=None, gt=0)
         tags: list[str] | None = None
 
     class RecallRequest(BaseModel):
-        query: str
-        limit: int = 5
+        query: str = Field(min_length=1, max_length=100_000)
+        limit: int = Field(default=5, ge=1, le=100)
         room: str | None = None
+        threshold: float = Field(default=0.8, ge=0, le=1)
+        hybrid: bool = True
 
     class FactRequest(BaseModel):
         subject: str
@@ -91,10 +93,10 @@ def create_app(palace_path: str | None = None, wing: str = "global", api_key: st
         max_depth: int = 4
 
     class RecallStreamRequest(BaseModel):
-        query: str
-        limit: int = 5
+        query: str = Field(min_length=1, max_length=100_000)
+        limit: int = Field(default=5, ge=1, le=100)
         room: str | None = None
-        threshold: float = 0.8
+        threshold: float = Field(default=0.8, ge=0, le=1)
         hybrid: bool = True
 
     class ScoreRequest(BaseModel):
@@ -127,13 +129,13 @@ def create_app(palace_path: str | None = None, wing: str = "global", api_key: st
         dry_run: bool = False
 
     class BatchRememberRequest(BaseModel):
-        memories: list[dict[str, Any]]
+        memories: list[dict[str, Any]] = Field(max_length=500)
 
     class BatchRecallRequest(BaseModel):
-        queries: list[str]
-        limit: int = 3
+        queries: list[str] = Field(max_length=100)
+        limit: int = Field(default=3, ge=1, le=100)
         room: str | None = None
-        threshold: float = 0.8
+        threshold: float = Field(default=0.8, ge=0, le=1)
 
     class BatchForgetRequest(BaseModel):
         drawer_ids: list[str]
@@ -162,7 +164,13 @@ def create_app(palace_path: str | None = None, wing: str = "global", api_key: st
 
     @app.post("/recall")
     def recall(req: RecallRequest):
-        results = palace.recall(req.query, limit=req.limit, room=req.room)
+        results = palace.recall(
+            req.query,
+            limit=req.limit,
+            room=req.room,
+            threshold=req.threshold,
+            hybrid=req.hybrid,
+        )
         return {"results": results, "count": len(results)}
 
     @app.post("/forget/{drawer_id}")

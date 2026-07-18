@@ -1,31 +1,21 @@
-# MemPalace Evolve
+# MemPalace Evolve Documentation
 
-Self-evolving memory palace for AI agents.
+MemPalace Evolve is a local-first memory layer for agents. Start with the path
+that matches your integration:
 
-[![PyPI](https://img.shields.io/pypi/v/mempalace-evolve)](https://pypi.org/project/mempalace-evolve/)
-[![Python](https://img.shields.io/pypi/pyversions/mempalace-evolve)](https://pypi.org/project/mempalace-evolve/)
-[![License](https://img.shields.io/github/license/a2328275243/mempalace-evolve)](https://github.com/a2328275243/mempalace-evolve/blob/master/LICENSE)
-[![Stars](https://img.shields.io/github/stars/a2328275243/mempalace-evolve)](https://github.com/a2328275243/mempalace-evolve/stargazers)
+| Integration | Use this guide |
+| --- | --- |
+| Python application | [Quick start](quickstart.md) |
+| MCP client | [Root README MCP setup](../README.md#mcp-client-setup) |
+| HTTP service | [REST API reference](api-reference.md#rest-api) |
 
-## What is MemPalace Evolve?
+## Guides
 
-A self-evolving memory system that gives AI agents **long-term memory** with automatic organization, scoring, and cleanup.
+- [Quick start](quickstart.md)
+- [API reference](api-reference.md)
+- [Architecture and lifecycle](architecture.md)
+- [Security](security.md)
+- [Roadmap](roadmap.md)
 
-## Key Features
-
-- **Vector Memory**: Semantic search powered by ChromaDB
-- **Knowledge Graph**: Entity-relationship tracking
-- **Self-Evolution**: Auto-scoring, promotion/drop, deduplication
-- **Spaced Repetition**: Leitner-like interval scheduling
-- **REST API**: FastAPI server for remote access
-- **MCP Server**: Claude Desktop integration
-- **LangChain Tools**: Drop-in memory for LLM chains
-
-## Get Started
-
-```bash
-pip install mempalace-evolve
-mempalace demo
-```
-
-Or check the [Quick Start](quickstart.md) guide.
+Run `mempalace doctor` after installation. It verifies the local database and
+knowledge graph before you add a client.

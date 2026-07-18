@@ -170,7 +170,7 @@ class TestLangChainAdapter:
 
 class TestRestAPI:
     @pytest.fixture(autouse=True)
-    def _check_fastapi(self):
+    def _check_fastapi(self, tmp_path):
         try:
             from fastapi.testclient import TestClient
             from mempalace_evolve.adapters.rest_api import create_app
@@ -188,15 +188,12 @@ class TestRestAPI:
             return
         # Smoke test: ensure TestClient routes correctly
         try:
-            import tempfile, os
-            with tempfile.TemporaryDirectory() as td:
-                test_app = self._create_app(td, wing="_smoke")
-                c = self._TestClient(test_app)
-                r = c.post("/remember", json={"content": "smoke", "room": "t"})
-                if r.status_code == 422 and "query" in r.text:
-                    pytest.skip("fastapi/starlette/httpx incompatibility detected")
-        except Exception:
-            pytest.skip("fastapi smoke test failed")
+            test_app = self._create_app(str(tmp_path / "rest-smoke"), wing="_smoke")
+            client = self._TestClient(test_app)
+            response = client.post("/remember", json={"content": "smoke", "room": "t"})
+            assert response.status_code == 200, response.text
+        except Exception as exc:
+            pytest.fail(f"FastAPI smoke test failed: {exc}")
 
     def _make_client(self, tmp_palace):
         app = self._create_app(tmp_palace, wing="test_api")

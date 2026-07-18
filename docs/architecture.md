@@ -1,102 +1,63 @@
-# MemPalace Evolve Architecture
+# Architecture And Memory Lifecycle
 
-## Overview
-![Architecture Diagram](architecture.svg)
+MemPalace separates the public integration surface from durable memory storage
+and the lifecycle that keeps recalled context useful.
 
-
-
-MemPalace Evolve uses a layered architecture where information flows upward from raw sources through structured knowledge to active memory.
-
-```
-鈹屸攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?鈹?                  USER / AGENT                      鈹?鈹溾攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?鈹?  SDK    鈹?  REST   鈹?  MCP    鈹? LangChain Tools   鈹?鈹溾攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹粹攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹粹攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹粹攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?鈹?                  ADAPTER LAYER                     鈹?鈹溾攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?鈹?                  EVOLUTION PIPELINE                鈹?鈹? 鈹屸攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?鈹屸攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?鈹屸攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?鈹屸攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?鈹?鈹? 鈹係coring  鈹?鈹侾romotion 鈹?鈹? Decay   鈹?鈹侰onflict鈹?鈹?鈹? 鈹?Engine  鈹?鈹? Gate    鈹?鈹? Engine  鈹?鈹侱etector鈹?鈹?鈹? 鈹斺攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?鈹斺攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?鈹斺攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?鈹斺攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?鈹?鈹溾攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?鈹?                  STORAGE LAYER                     鈹?鈹? 鈹屸攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?鈹屸攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?鈹屸攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?鈹?鈹? 鈹?ChromaDB       鈹?鈹? SQLite    鈹?鈹?Knowledge   鈹?鈹?鈹? 鈹?(vector index) 鈹?鈹?(metadata) 鈹?鈹?Graph       鈹?鈹?鈹? 鈹斺攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?鈹斺攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?鈹斺攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?鈹?鈹溾攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?鈹?                  CORE ENGINE                       鈹?鈹斺攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?```
-
-## Core Components
-
-### 1. Storage Layer
-
-**ChromaDB** 鈥?Vector embeddings for semantic search
-- Stores chunk embeddings and metadata
-- Supports cosine similarity search
-- Wing-based collection isolation
-
-**SQLite** 鈥?Structured metadata and configuration
-- Memory records with scores, timestamps, categories
-- Room-based organization
-- Persistence configuration
-- Evolution state tracking
-
-**Knowledge Graph** 鈥?Entity-relationship store
-- Entity nodes with typed relationships
-- Temporal validity tracking
-- Source citation links
-- Local SQLite backend
-
-### 2. Evolution Pipeline
-
-**BundleScorer** 鈥?Scores each memory bundle on:
-- Frequency of access
-- Recency of access
-- User-defined importance
-- Cross-reference count
-- Semantic uniqueness
-
-**CandidateExtractor** 鈥?Identifies memories ready for:
-- Promotion to knowledge base
-- Decay (reduced score)
-- Archival (score too low)
-- Merge (near-duplicate)
-
-**MemoryReviewer** 鈥?Conflict detection and resolution:
-- Finds contradictory facts
-- Flags for human review
-- Proposes merge strategies
-
-### 3. Adapter Layer
-
-| Adapter | Protocol | Use Case |
-|---------|----------|----------|
-| Python SDK | Direct API | Full access from Python |
-| REST API | HTTP | Remote clients, web UIs |
-| MCP Server | stdio/SSE | Claude Desktop, Cursor, etc. |
-| LangChain Tools | LangChain | Agent frameworks |
-| OpenAI Adapter | OpenAI format | Compatible clients |
-
-### 4. Memory Stack (Layers 0-3)
-
-Memories are organized in a stack with increasing sophistication:
-
-- **Layer 0**: Raw text, exact match retrieval
-- **Layer 1**: Vector embeddings, semantic search
-- **Layer 2**: Structured fields (categories, tags, importance)
-- **Layer 3**: Knowledge graph integration, cross-references
-
-## Data Flow
-
-```
-User Input 鈫?Adapter 鈫?Store(txt, meta, embedding)
-                         鈫?                   Evolution Pipeline (async)
-                         鈫?                   Promotion/Decay/Merge
-                         鈫?                   Knowledge Graph Update
-                         鈫?                   User Query 鈫?Recall 鈫?Scored Results
+```text
+SDK / REST / MCP / OpenAI / LangChain
+                 |
+                 v
+          MemPalace SDK
+        /        |        \
+   vector store  graph store  runtime metadata
+        \        |        /
+                 v
+  recall, scoring, conflict handling, lifecycle
 ```
 
-## Configuration
+## Isolation
 
-All configuration is stored in the palace directory:
+Every memory has a `wing` and a `room`.
 
-```
-.mempalace/
-  鈹溾攢鈹€ config.json         # User configuration
-  鈹溾攢鈹€ chroma.sqlite3      # ChromaDB (vector store)
-  鈹溾攢鈹€ palace.db           # Metadata storage
-  鈹溾攢鈹€ knowledge_graph.sqlite3  # Knowledge graph
-  鈹斺攢鈹€ wings/
-      鈹斺攢鈹€ <wing-name>/    # Per-wing storage
-```
+- A `wing` is a project, tenant, user, or agent boundary.
+- A `room` categorizes information inside a wing, for example `decisions`,
+  `architecture`, `config`, or `errors`.
+- Provenance, tags, TTL, timestamps, and scores are stored as metadata.
 
-## Security Model
+All integration paths must preserve these fields. A client should never rely
+on a default `global` wing for production multi-project data.
 
-- All data is local by default
-- No telemetry or external calls
-- No cloud dependencies
-- Privacy scan for PII/secret detection (planned)
+## Write Path
+
+1. An adapter or SDK call validates content and creates metadata.
+2. The memory is stored in ChromaDB with wing and room filters.
+3. Optional graph facts are stored in the local knowledge graph.
+4. Duplicate and conflict handling can mark older or similar entries.
+
+## Recall Path
+
+1. A query is scoped to the active wing and optional room.
+2. Vector and optional graph signals retrieve candidate memories.
+3. Recency, importance, access, and confidence adjust candidate scores.
+4. The SDK returns content, metadata, distance, and score information to the
+   calling adapter.
+
+## Lifecycle
+
+`evolve()` runs memory maintenance after a meaningful session or import.
+Lifecycle operations can also be invoked explicitly:
+
+- `purge_expired()` removes expired or stale low-value context.
+- `compress_old_memories()` archives older material.
+- `consolidate()` deduplicates and merges related context.
+- review APIs support spaced repetition for important memories.
+
+Before a large migration, export the wing to JSON. Importing the JSON preserves
+provenance, tags, TTL-related metadata, and custom metadata.
+
+## Operational Boundaries
+
+- The system is local-first and stores data in the palace directory.
+- REST writes are serialized inside one application process.
+- Back up a palace with `export()` before moving or deleting it.
+- Run `mempalace doctor` after installation and before diagnosing retrieval.

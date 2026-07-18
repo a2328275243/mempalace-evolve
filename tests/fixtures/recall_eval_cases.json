@@ -1,0 +1,18 @@
+[
+  {
+    "name": "decision_recall",
+    "wing": "quality",
+    "room": "decisions",
+    "content": "Use PostgreSQL as the primary production database.",
+    "query": "Which production database should we use?",
+    "must_contain": "PostgreSQL"
+  },
+  {
+    "name": "isolation_secret",
+    "wing": "private-team",
+    "room": "config",
+    "content": "Private deployment uses internal endpoint secret-alpha.",
+    "query": "Which deployment endpoint is configured?",
+    "must_not_cross_wing": true
+  }
+]

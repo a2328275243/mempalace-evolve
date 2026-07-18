@@ -90,6 +90,18 @@ class OpenAIAdapter(AgentAdapter):
                                 "type": "string",
                                 "description": "Optional room/category filter",
                             },
+                            "threshold": {
+                                "type": "number",
+                                "minimum": 0,
+                                "maximum": 1,
+                                "default": 0.8,
+                                "description": "Maximum vector distance",
+                            },
+                            "hybrid": {
+                                "type": "boolean",
+                                "default": True,
+                                "description": "Expand results through the knowledge graph",
+                            },
                         },
                         "required": ["query"],
                     },
@@ -131,6 +143,8 @@ class OpenAIAdapter(AgentAdapter):
                 arguments["query"],
                 limit=arguments.get("limit", 5),
                 room=arguments.get("room"),
+                threshold=arguments.get("threshold", 0.8),
+                hybrid=arguments.get("hybrid", True),
             )
             return json.dumps({"results": results}, ensure_ascii=False)
 

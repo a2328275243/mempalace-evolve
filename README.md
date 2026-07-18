@@ -34,174 +34,165 @@
 
 # MemPalace Evolve
 
-MemPalace Evolve is a self-evolving long-term memory system for AI tools.
+MemPalace Evolve is a local-first long-term memory layer for AI agents. It
+stores durable facts, retrieves relevant context, tracks relationships, and
+keeps each project, user, or agent isolated in its own `wing`.
 
-It gives an assistant a memory layer that can store facts, recall relevant context, promote useful memories, decay noisy ones, reconcile conflicts, and expose everything through Python, REST, LangChain-style tools, or MCP.
+It is a memory component, not a complete agent. Use it from Python, an MCP
+client, or an HTTP client.
 
-The goal is simple: make an AI assistant remember a project across sessions without forcing the user to repeat the same background every time.
+## Choose A Path
 
-## Why This Exists
+| Path | Best for | Start here |
+| --- | --- | --- |
+| Python SDK | Your own Python agent or application | [SDK quick start](#python-sdk-in-3-minutes) |
+| MCP | Claude Code, Cursor, and other MCP clients | [MCP setup](#mcp-client-setup) |
+| REST API | Services and non-Python clients | [REST API](#rest-api) |
 
-Most AI tools have weak memory. A conversation ends, context disappears, and the next session starts cold.
-
-MemPalace is built for long-running work:
-
-- research projects
-- coding projects
-- writing projects
-- personal knowledge bases
-- agents that need durable context
-
-It is not a full coding agent. It is the memory layer you plug into the agent or client you already use.
-
-## Core Features
-
-- **Persistent memory**: store facts, decisions, relationships, and project context.
-- **Semantic recall**: retrieve memories relevant to the current task.
-- **Knowledge graph**: connect entities and relationships instead of keeping only flat notes.
-- **Memory evolution**: promote useful memories, decay weak ones, and reduce duplicates.
-- **Multiple adapters**: Python SDK, REST API, MCP server, OpenAI-style helper, and LangChain-style tools.
-- **Project isolation**: use `wing` names to separate memories by project, tool, or user.
-
-## Quick Start
-
-Requires Python 3.10+.
+Requires Python 3.10 or newer.
 
 ```bash
 git clone https://github.com/a2328275243/mempalace-evolve.git
 cd mempalace-evolve
-pip install -e ".[mcp]"
-```
-
-Run a quick check:
-
-```bash
+pip install -e ".[api,mcp]"
 mempalace doctor
 ```
 
-Use the Python SDK:
+`mempalace doctor` must report memory read/write and knowledge graph checks as
+passing before you connect a client.
+
+## Python SDK In 3 Minutes
 
 ```python
 from mempalace_evolve import MemPalace
 
-memory = MemPalace("./.mempalace", wing="demo")
+# Use a stable directory and a distinct wing for each project, user, or agent.
+memory = MemPalace("./.mempalace", wing="payments-service")
 
-memory.store_memory(
-    content="The project uses a two-stage retrieval pipeline.",
-    category="architecture",
-    importance=0.8,
+memory.remember(
+    "Authentication uses short-lived JWT access tokens.",
+    room="decisions",
+    metadata={"owner": "platform"},
+    source="architecture-review",
+    tags=["auth", "security"],
 )
 
-results = memory.recall("How does retrieval work?")
-for item in results:
-    print(item.content)
+memory.add_fact("payments-service", "uses", "JWT")
+
+for result in memory.recall("How does authentication work?", room="decisions"):
+    print(result["content"])
 ```
 
-## Use With MCP Clients
+For a complete runnable script, run `python examples/sdk_basic.py`.
 
-Install with MCP support:
+## MCP Client Setup
 
-```bash
-pip install -e ".[mcp]"
-```
-
-Add MemPalace as an MCP server in any MCP-capable client:
+Add this configuration to an MCP-capable client, then restart that client.
 
 ```json
 {
   "mcpServers": {
     "mempalace": {
-      "type": "stdio",
-      "command": "python",
-      "args": ["-m", "mempalace_evolve.adapters.mcp_server"],
+      "command": "mempalace-mcp",
       "env": {
-        "PYTHONIOENCODING": "utf-8",
         "MEMPALACE_PATH": ".mempalace",
-        "MEMPALACE_WING": "default"
+        "MEMPALACE_WING": "payments-service"
       }
     }
   }
 }
 ```
 
-Restart your client. It should now see MemPalace tools for storing, recalling, promoting, auditing, and querying memory.
+A successful connection exposes tools including `remember`, `recall`,
+`batch_remember`, `batch_recall`, `add_fact`, `query_entity`, `forget`, and
+`evolve`. Store one test fact, ask the client to recall it, and confirm that
+the result is returned from the configured wing.
 
-`MEMPALACE_PATH` controls where the memory database lives. `MEMPALACE_WING` separates memory spaces, for example one wing per project.
+## REST API
 
-## Other Integration Options
-
-REST API:
-
-```bash
-pip install -e ".[api]"
-mempalace-server
-```
-
-LangChain-style tools:
+Start an authenticated service for one memory wing:
 
 ```bash
-pip install -e ".[langchain]"
-python examples/langchain_agent.py
+mempalace serve --host 127.0.0.1 --port 8765 \
+  --palace ./.mempalace --wing payments-service --api-key change-me
 ```
 
-Minimal SDK example:
+Check the service and write a memory:
 
 ```bash
-python examples/sdk_basic.py
+curl http://127.0.0.1:8765/health
+
+curl -X POST http://127.0.0.1:8765/remember \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: change-me" \
+  -d "{\"content\": \"The service uses PostgreSQL.\", \"room\": \"architecture\"}"
 ```
 
-Cursor MCP example:
+Recall it with:
 
 ```bash
-python examples/cursor_mcp/verify_setup.py
+curl -X POST http://127.0.0.1:8765/recall \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: change-me" \
+  -d "{\"query\": \"Which database does the service use?\", \"limit\": 3}"
 ```
 
-Claude Code hook example:
+The health endpoint is intentionally public. All other endpoints require the
+API key when `--api-key` is set. See [the API reference](docs/api-reference.md)
+for batch, lifecycle, review, graph, and export routes.
 
-```bash
-python examples/claude_code_hook/stop_hook.py
+## Core Concepts
+
+| Concept | Meaning | Recommended convention |
+| --- | --- | --- |
+| `wing` | Hard project, user, or agent boundary | One stable identifier per tenant or project |
+| `room` | Category inside a wing | Use `decisions`, `architecture`, `config`, `errors`, or `general` |
+| `metadata` | Filterable structured fields | Keep values scalar and use stable keys |
+| `tags` | Comma-separated labels persisted with a memory | Use short, reusable labels such as `security` |
+| `ttl` | Lifetime in seconds for temporary information | Use it for volatile context, not core decisions |
+| `evolve()` | Scores, promotes, and cleans stored context | Run after a meaningful session or on a schedule |
+
+## A Durable Memory Workflow
+
+1. Store a decision with `remember()` and a stable `source`.
+2. Start a later session with `recall()` or `context_for()`.
+3. Call `evolve()` after a substantial conversation or batch import.
+4. Inspect `stats()` and export a backup before migration.
+
+```python
+report = memory.evolve()
+backup = memory.export(format="json", output="mempalace-backup.json")
+print(report, backup)
 ```
 
-These examples are optional. The core package works without any specific AI client.
+## Data Management And Troubleshooting
 
-## Project Layout
+- Keep the palace directory on durable storage and back it up with
+  `memory.export(format="json", output="backup.json")`.
+- Restore with `memory.import_memories("backup.json")`.
+- Remove one memory with `memory.forget(drawer_id)`; use a separate wing when
+  deleting an entire project's data is required.
+- Run `mempalace doctor` first when storage or dependencies fail.
+- If recall is noisy, narrow the `room`, use a more specific query, add
+  metadata/tags, and review conflicting or stale memories before lowering
+  thresholds.
 
-- `src/mempalace_evolve/` - core memory system, evolution pipeline, adapters, CLI, and SDK.
-- `tests/` - regression tests for the memory engine and adapters.
-- `examples/` - small integration examples.
-- `pyproject.toml` - package metadata and optional dependencies.
+## More Documentation
+
+- [Quick start](docs/quickstart.md)
+- [API reference](docs/api-reference.md)
+- [Architecture and lifecycle](docs/architecture.md)
+- [Examples](examples/)
+- [Security notes](docs/security.md)
 
 ## Development
 
-Install development dependencies:
-
 ```bash
-pip install -e ".[dev,mcp]"
-```
-
-Run tests:
-
-```bash
+pip install -e ".[dev,api,mcp]"
 python -m pytest tests/ -v
+ruff check src/
+ruff format --check src/
 ```
-
-Run the doctor:
-
-```bash
-python -m mempalace_evolve.cli doctor
-```
-
-## Current Direction
-
-The repository is now focused on MemPalace Evolve itself.
-
-The next work is improving memory quality:
-
-- better automatic summarization
-- better conflict detection
-- stronger knowledge graph extraction
-- cleaner memory promotion and decay
-- better demos that show memory improving across sessions
 
 ## License
 

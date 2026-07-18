@@ -84,7 +84,13 @@ def create_mcp_server(palace_path: str | None = None, wing: str = "global"):
         )
 
     @mcp.tool()
-    def recall(query: str, limit: int = 5, room: str | None = None) -> str:
+    def recall(
+        query: str,
+        limit: int = 5,
+        room: str | None = None,
+        threshold: float = 0.8,
+        hybrid: bool = True,
+    ) -> str:
         """Search past memories by semantic similarity.
 
         Use this to check what you already know before asking the user,
@@ -95,19 +101,10 @@ def create_mcp_server(palace_path: str | None = None, wing: str = "global"):
             limit: Max results (default 5)
             room: Optional filter by category
         """
-        results = palace.recall(query, limit=limit, room=room)
+        results = palace.recall(query, limit=limit, room=room, threshold=threshold, hybrid=hybrid)
         if not results:
             return json.dumps({"results": [], "message": "No relevant memories found"})
-        output = []
-        for r in results:
-            output.append(
-                {
-                    "content": r["content"],
-                    "room": r.get("metadata", {}).get("room", ""),
-                    "distance": round(r.get("distance", 0), 4),
-                }
-            )
-        return json.dumps({"results": output, "count": len(output)}, ensure_ascii=False)
+        return json.dumps({"results": results, "count": len(results)}, ensure_ascii=False)
 
     @mcp.tool()
     def batch_remember(memories: list[dict[str, Any]]) -> str:

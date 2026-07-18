@@ -71,6 +71,10 @@ class LangChainAdapter(AgentAdapter):
             query: str = Field(description="Natural language search query")
             limit: int = Field(default=5, description="Max results to return")
             room: str | None = Field(default=None, description="Optional room/category filter")
+            threshold: float = Field(default=0.8, ge=0, le=1, description="Maximum vector distance")
+            hybrid: bool = Field(
+                default=True, description="Expand results through the knowledge graph"
+            )
 
         class AddFactInput(BaseModel):
             subject: str = Field(description="Entity name (e.g. 'project', 'auth_module')")
@@ -95,17 +99,17 @@ class LangChainAdapter(AgentAdapter):
             )
             return json.dumps({"stored": True, "id": drawer_id})
 
-        def _recall(query: str, limit: int = 5, room: str | None = None) -> str:
-            results = self.palace.recall(query, limit=limit, room=room)
-            return json.dumps(
-                {
-                    "results": [
-                        {"content": r["content"], "room": r.get("metadata", {}).get("room", "")}
-                        for r in results
-                    ]
-                },
-                ensure_ascii=False,
+        def _recall(
+            query: str,
+            limit: int = 5,
+            room: str | None = None,
+            threshold: float = 0.8,
+            hybrid: bool = True,
+        ) -> str:
+            results = self.palace.recall(
+                query, limit=limit, room=room, threshold=threshold, hybrid=hybrid
             )
+            return json.dumps({"results": results}, ensure_ascii=False)
 
         def _add_fact(subject: str, predicate: str, object: str) -> str:
             self.palace.add_fact(subject, predicate, object)

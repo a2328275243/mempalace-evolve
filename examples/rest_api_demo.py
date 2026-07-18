@@ -2,7 +2,7 @@
 
 Start the server:
     pip install mempalace-evolve[api]
-    mempalace-server --port 8765
+    mempalace serve --port 8765
 
 Then call with curl, httpie, requests, or any HTTP client.
 """
@@ -77,4 +77,4 @@ if __name__ == "__main__":
         demo_with_requests()
     except Exception as e:
         print(f"(Could not connect to server: {e})")
-        print("Start it with: mempalace-server --port 8765")
+        print("Start it with: mempalace serve --port 8765")

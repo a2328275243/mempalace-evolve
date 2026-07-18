@@ -183,8 +183,23 @@ class MemPalace:
         from mempalace_evolve.exceptions import StorageError, ValidationError
         import hashlib
 
-        if not content or not content.strip():
+        if not isinstance(content, str):
+            raise ValidationError("Memory content must be a string")
+        if not content.strip():
             raise ValidationError("Memory content cannot be empty")
+        if len(content) > 100_000:
+            raise ValidationError("Memory content cannot exceed 100000 characters")
+        if not isinstance(room, str) or not room.strip():
+            raise ValidationError("Memory room must be a non-empty string")
+        if ttl is not None and (not isinstance(ttl, int) or isinstance(ttl, bool) or ttl <= 0):
+            raise ValidationError("Memory ttl must be a positive integer number of seconds")
+        if metadata is not None and not isinstance(metadata, dict):
+            raise ValidationError("Memory metadata must be a dictionary")
+        if tags is not None and (
+            not isinstance(tags, list)
+            or any(not isinstance(tag, str) or not tag.strip() for tag in tags)
+        ):
+            raise ValidationError("Memory tags must be a list of non-empty strings")
 
         # Auto-classify memory type based on room
         mtype = memory_type or _ROOM_TYPE_MAP.get(room, EPISODIC)
@@ -411,6 +426,18 @@ class MemPalace:
         Returns:
             List of matching memories with content and metadata.
         """
+        from mempalace_evolve.exceptions import ValidationError
+
+        if not isinstance(query, str):
+            raise ValidationError("Recall query must be a string")
+        if not query.strip():
+            return []
+        if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 100:
+            raise ValidationError("Recall limit must be an integer between 1 and 100")
+        if room is not None and (not isinstance(room, str) or not room.strip()):
+            raise ValidationError("Recall room must be a non-empty string when provided")
+        if not isinstance(threshold, (int, float)) or not 0 <= threshold <= 1:
+            raise ValidationError("Recall threshold must be between 0 and 1")
         # Working memory cache: if same topic, return cached results (fast string prefix check)
         topic_sim = 0.0
         if self._working_memory_topic and query:
@@ -451,16 +478,8 @@ class MemPalace:
                 dists = results["distances"][0] if results.get("distances") else [0.0] * len(docs)
                 ids = results["ids"][0] if results.get("ids") else []
                 for doc, meta, dist, did in zip(docs, metas, dists, ids):
-                    if dist <= threshold:
-                        score = self._compute_recall_score(dist, meta)
-                        output.append(
-                            {
-                                "content": doc,
-                                "metadata": meta,
-                                "distance": dist,
-                                "_score": score,
-                            }
-                        )
+                    if dist <= threshold and not self._is_expired(meta):
+                        output.append(self._make_recall_result(doc, meta, dist, did))
                         seen_ids.add(did)
         except Exception as e:
             logger.warning("Wing recall failed: %s", e)
@@ -487,19 +506,14 @@ class MemPalace:
                 )
                 p_ids = proc_results["ids"][0] if proc_results.get("ids") else []
                 for doc, meta, dist, did in zip(p_docs, p_metas, p_dists, p_ids):
-                    if dist <= threshold and did not in seen_ids:
+                    if dist <= threshold and did not in seen_ids and not self._is_expired(meta):
                         # Track cross-wing hit for smart promotion
                         if meta.get("wing") != self._wing:
                             self._track_cross_wing_hit(collection, did, meta)
-                        score = self._compute_recall_score(dist, meta)
                         output.append(
-                            {
-                                "content": doc,
-                                "metadata": meta,
-                                "distance": dist,
-                                "_score": score,
-                                "source": "procedural_global",
-                            }
+                            self._make_recall_result(
+                                doc, meta, dist, did, source="procedural_global"
+                            )
                         )
                         seen_ids.add(did)
         except Exception as _e:
@@ -528,6 +542,17 @@ class MemPalace:
         self._working_memory_topic = query
 
         return output[:limit]  # Return top-scored results up to limit
+
+    @staticmethod
+    def _is_expired(metadata: dict) -> bool:
+        """Keep TTL-expired memories out of recall until cleanup removes them."""
+        expire_at = metadata.get("expire_at")
+        if expire_at is None:
+            return False
+        try:
+            return float(expire_at) <= datetime.now(timezone.utc).timestamp()
+        except (TypeError, ValueError):
+            return False
 
     def _track_cross_wing_hit(self, collection, drawer_id: str, meta: dict):
         """Track when a memory is recalled from a different wing.
@@ -592,6 +617,70 @@ class MemPalace:
 
         return round(score, 4)
 
+    def _recall_score_components(self, distance: float, meta: dict) -> dict[str, float]:
+        """Expose the inputs behind the composite recall score."""
+        relevance = max(0.0, 1.0 - distance)
+        recency = 0.5
+        last_accessed = meta.get("last_accessed") or meta.get("added_at", "")
+        if last_accessed:
+            try:
+                timestamp = datetime.fromisoformat(str(last_accessed).replace("Z", "+00:00"))
+                if timestamp.tzinfo is None:
+                    timestamp = timestamp.replace(tzinfo=timezone.utc)
+                days_ago = (datetime.now(timezone.utc) - timestamp).total_seconds() / 86400
+                recency = math.exp(-0.023 * days_ago)
+            except (ValueError, TypeError):
+                pass
+
+        importance = 0.5
+        try:
+            importance = float(meta.get("enhanced_importance", meta.get("importance", 0.5)))
+        except (ValueError, TypeError):
+            pass
+
+        status_penalty = 0.0
+        if meta.get("stale") or meta.get("status") == "stale":
+            status_penalty -= 0.3
+        if meta.get("status") == "superseded":
+            status_penalty -= 0.4
+        return {
+            "score": self._compute_recall_score(distance, meta),
+            "relevance": round(relevance, 4),
+            "recency": round(recency, 4),
+            "importance": round(importance, 4),
+            "status_penalty": round(status_penalty, 4),
+        }
+
+    def _make_recall_result(
+        self,
+        content: str,
+        metadata: dict,
+        distance: float,
+        drawer_id: str,
+        *,
+        source: str = "wing",
+    ) -> dict[str, Any]:
+        """Build a recall result with evidence suitable for users and adapters."""
+        score = self._recall_score_components(distance, metadata)
+        status = metadata.get("status", "active")
+        return {
+            "drawer_id": drawer_id,
+            "content": content,
+            "metadata": metadata,
+            "distance": distance,
+            "_score": score["score"],
+            "source": source,
+            "explanation": {
+                "match_reason": "semantic_vector_similarity",
+                "source": metadata.get("source_file", ""),
+                "created_at": metadata.get("added_at", ""),
+                "status": status,
+                "is_superseded": status == "superseded",
+                "superseded_by": metadata.get("superseded_by", ""),
+                "score": score,
+            },
+        }
+
     def _handle_contradiction(self, collection, new_content: str, room: str, new_meta: dict):
         """Detect and handle contradictions with existing memories.
 
@@ -603,6 +692,8 @@ class MemPalace:
         different content = likely update/contradiction.
         """
         try:
+            from mempalace_evolve.core.dedup import text_overlap_similarity
+
             where = {"$and": [{"wing": self._wing}, {"room": room}]}
             existing = collection.query(
                 query_texts=[new_content],
@@ -618,7 +709,11 @@ class MemPalace:
 
             for doc, meta, dist, did in zip(docs, metas, dists, ids):
                 # Same topic (< 0.5 distance) but not identical content
-                if dist < 0.5 and doc.strip() != new_content.strip():
+                if (
+                    dist < 0.5
+                    and doc.strip() != new_content.strip()
+                    and text_overlap_similarity(new_content, doc, min_overlap_ratio=0.6) >= 0.5
+                ):
                     # Mark old memory as superseded
                     meta["status"] = "superseded"
                     meta["superseded_by"] = new_content[:100]
@@ -789,7 +884,13 @@ class MemPalace:
             Dict with total count, per-room distribution, KG entity count, etc.
         """
         collection = self._get_collection()
-        result = {"wing": self._wing, "total": 0, "rooms": {}, "kg_entities": 0}
+        result = {
+            "wing": self._wing,
+            "total": 0,
+            "rooms": {},
+            "kg_entities": 0,
+            "lifecycle": {"active": 0, "stale": 0, "superseded": 0, "expired": 0},
+        }
 
         if not collection:
             return result
@@ -804,6 +905,13 @@ class MemPalace:
                 for meta in all_items["metadatas"]:
                     room = meta.get("room", "general")
                     result["rooms"][room] = result["rooms"].get(room, 0) + 1
+                    if self._is_expired(meta):
+                        result["lifecycle"]["expired"] += 1
+                    else:
+                        status = meta.get("status", "active")
+                        if status not in {"stale", "superseded"}:
+                            status = "active"
+                        result["lifecycle"][status] += 1
         except Exception as _e:
             logger.debug("Silent exception", exc_info=_e)
 
@@ -1338,7 +1446,13 @@ class MemPalace:
             BatchRememberResult with total/stored/duplicates/ids.
         """
         from mempalace_evolve.core.chroma_helper import batch_add_drawers, _make_drawer_id
+        from mempalace_evolve.exceptions import ValidationError
         import hashlib
+
+        if not isinstance(memories, list):
+            raise ValidationError("Batch memories must be a list")
+        if len(memories) > 500:
+            raise ValidationError("Batch remember accepts at most 500 memories")
 
         collection = self._get_collection()
         if collection is None:
@@ -1347,6 +1461,8 @@ class MemPalace:
         drawers = []
         ids = []
         for mem in memories:
+            if not isinstance(mem, dict):
+                raise ValidationError("Each batch memory must be a dictionary")
             content_text = str(mem.get("content", ""))
             if not content_text.strip():
                 ids.append("")  # placeholder for skipped invalid item
@@ -1424,8 +1540,15 @@ class MemPalace:
         Returns:
             List of {query: str, memories: list[dict]}.
         """
+        from mempalace_evolve.exceptions import ValidationError
+
+        if not isinstance(queries, list):
+            raise ValidationError("Batch queries must be a list")
+        if len(queries) > 100:
+            raise ValidationError("Batch recall accepts at most 100 queries")
+
         results: list[dict[str, Any]] = []
-        for q in queries[:100]:
+        for q in queries:
             memories = self.recall(q, limit=limit, room=room, threshold=threshold)
             results.append({"query": q, "memories": memories})
         return BatchRecallResult(results=results)

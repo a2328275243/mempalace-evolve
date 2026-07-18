@@ -1,155 +1,116 @@
-# MemPalace Evolve 鈥?API Reference
+# API Reference
 
 ## Python SDK
-
-### MemPalace
-
-The main class for interacting with the memory system.
 
 ```python
 from mempalace_evolve import MemPalace
 
-memory = MemPalace(palace_path="./.mempalace", wing="demo")
+memory = MemPalace("./.mempalace", wing="project-alpha")
 ```
 
-#### Constructor
+`wing` is the isolation boundary. Use one stable wing per project, agent, or
+user. `room` is a category inside a wing.
 
-```python
-MemPalace(
-    palace_path: str | Path = None,    # Path to palace dir (default: ~/.mempalace)
-    wing: str = "global",              # Project/wing name for isolation
-    auto_evolve: bool = False,         # Auto-run evolution periodically
-    evolve_interval: int = 3600,       # Seconds between auto-evolve cycles
-    scoring_config: dict | None = None # Per-room scoring rules
-)
-```
+| Method | Purpose |
+| --- | --- |
+| `remember(content, room="general", metadata=None, source="", ttl=None, tags=None)` | Store one durable memory |
+| `recall(query, limit=5, room=None, threshold=0.8, hybrid=True)` | Retrieve relevant memories |
+| `forget(drawer_id)` | Delete one memory |
+| `batch_remember(memories)` | Store a list of memory dictionaries |
+| `batch_recall(queries, limit=3, room=None, threshold=0.8)` | Recall for multiple queries |
+| `batch_forget(drawer_ids)` | Delete multiple memories |
+| `add_fact(subject, predicate, object)` | Add a knowledge graph relationship |
+| `query_entity(entity, direction="both")` | Retrieve graph relationships |
+| `digest(conversation)` | Extract memories from a transcript or messages |
+| `context_for(query, limit=10, max_tokens=2000)` | Format recalled context for an agent prompt |
+| `evolve(transcript=None)` | Run scoring, promotion, decay, and conflict handling |
+| `export(format="json", output=None)` | Export the active wing |
+| `import_memories(source)` | Import a list or JSON backup |
+| `stats()` | Return memory and graph statistics |
+| `purge_expired(ttl_days=90, ttl_summary_days=180)` | Remove expired or stale memories |
+| `compress_old_memories(compress_after_days=60, max_chars=800)` | Archive/compress old memories |
 
-#### Core Methods
+`recall()` returns a list of dictionaries. Access content with
+`result["content"]`, metadata with `result["metadata"]`, and similarity
+information with `result["distance"]` or `_score`. Every result also has a
+`drawer_id` and an `explanation` object with the source, creation time, score
+components, match reason, lifecycle status, and any replacement fact.
 
-| Method | Description |
-|--------|-------------|
-| `store_memory(content, category, importance, room, metadata, source)` | Store a new memory |
-| `recall(query, room, limit, min_score, include_graph)` | Semantic recall |
-| `remember(content, room)` | Quick store shorthand |
-| `forget(memory_id)` | Delete a specific memory |
-| `get_stats()` | Get memory statistics |
-| `evolve()` | Run evolution pipeline |
-| `get_knowledge_graph()` | Get the knowledge graph instance |
-| `search_kg(query, entity_type, as_of)` | Query the knowledge graph |
-| `build_wiki(output_dir)` | Generate wiki pages from memories |
+### Lifecycle Rules
 
-### CLI
+Memories begin as `active`. A conflicting decision or configuration may be
+marked `superseded` and linked to its replacement; stale memories are
+down-ranked; TTL-expired memories are never returned by `recall()` and can be
+removed with `purge_expired()`. `stats()["lifecycle"]` reports the current
+active, stale, superseded, and expired counts. `forget()` is permanent, so
+export a backup before deleting data you may need later.
+
+## CLI
 
 ```bash
-# Quick health check
 mempalace doctor
-
-# Interactive shell
-mempalace shell
-
-# Run evolution pipeline
-mempalace evolve --path ./.mempalace
-
-# Get memory stats
-mempalace stats --path ./.mempalace
-
-# Start REST API server
-mempalace-server --host 0.0.0.0 --port 8000
-
-# Start MCP server
-mempalace-mcp
+mempalace remember "Use PostgreSQL" --room architecture --palace ./.mempalace
+mempalace recall "database choice" --limit 5 --palace ./.mempalace
+mempalace evolve --palace ./.mempalace
+mempalace export --format json --output backup.json --palace ./.mempalace
+mempalace serve --host 127.0.0.1 --port 8765 --palace ./.mempalace --wing project-alpha
 ```
+
+Other lifecycle commands are `review`, `top`, `similar`, `purge`, `compress`,
+and `consolidate`. Use `mempalace --help` for their exact arguments.
 
 ## REST API
 
-Start with:
+Start the service with `mempalace serve --palace ./.mempalace --wing project-alpha`.
+When `--api-key` is supplied, every route except `/health` requires `X-API-Key`.
+
+| Endpoint | Method | Purpose |
+| --- | --- | --- |
+| `/health` | GET | Service, path, and wing confirmation |
+| `/remember` | POST | Store one memory |
+| `/recall` | POST | Retrieve memories |
+| `/forget/{drawer_id}` | POST | Delete one memory |
+| `/remember/batch` | POST | Store many memories |
+| `/recall/batch` | POST | Recall for many queries |
+| `/forget/batch` | POST | Delete many memories |
+| `/kg/add` | POST | Add a graph fact |
+| `/kg/query/{entity}` | POST | Query graph relationships |
+| `/kg/query_v2` | POST | Structured temporal graph query |
+| `/kg/path` | POST | Find a graph path |
+| `/digest` | POST | Extract memories from a transcript |
+| `/evolve` | POST | Run the evolution pipeline |
+| `/stats` | GET | Memory and graph statistics |
+| `/export` | GET | Export JSON or Markdown |
+| `/review/due` | GET | Find due review items |
+| `/review/mark` | POST | Mark a memory reviewed |
+| `/review/snooze` | POST | Defer a review item |
+| `/lifecycle/purge` | POST | Purge stale/expired memories |
+| `/lifecycle/compress` | POST | Compress old memories |
+| `/lifecycle/consolidate` | POST | Deduplicate and consolidate |
+
+Example:
+
 ```bash
-pip install -e ".[api]"
-mempalace-server
+curl -X POST http://127.0.0.1:8765/remember \
+  -H "Content-Type: application/json" \
+  -d '{"content":"The API uses FastAPI.","room":"architecture"}'
+
+curl -X POST http://127.0.0.1:8765/recall \
+  -H "Content-Type: application/json" \
+  -d '{"query":"Which framework does the API use?","limit":3}'
 ```
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/v1/memories` | GET | List memories |
-| `/v1/memories` | POST | Store a memory |
-| `/v1/memories/{id}` | GET | Get a specific memory |
-| `/v1/memories/{id}` | DELETE | Delete a memory |
-| `/v1/recall` | POST | Semantic recall |
-| `/v1/evolve` | POST | Trigger evolution |
-| `/v1/stats` | GET | Get memory statistics |
-| `/v1/graph/query` | POST | Query knowledge graph |
-| `/health` | GET | Health check |
-
-### Example
-
-```bash
-curl -X POST http://localhost:8000/v1/memories \
-  -H "Content-Type: application/json" \
-  -d '{"content": "The API uses FastAPI", "room": "architecture"}'
-
-curl -X POST http://localhost:8000/v1/recall \
-  -H "Content-Type: application/json" \
-  -d '{"query": "What framework does the API use?"}'
-```
+`POST /recall` accepts the same `limit`, `room`, `threshold`, and `hybrid`
+options as the SDK and returns the same result and `explanation` structure.
 
 ## MCP Server
 
-### Available Tools
+Install with `pip install -e ".[mcp]"`, configure `mempalace-mcp`, then set
+`MEMPALACE_PATH` and `MEMPALACE_WING` in the client environment. The server
+exposes memory write/recall, batch operations, graph operations, review and
+lifecycle operations, and `evolve`.
 
-| Tool | Description |
-|------|-------------|
-| `kb_store_memory` | Store a new memory |
-| `kb_recall` | Semantic recall |
-| `kb_get_stats` | Get memory statistics |
-| `kb_evolve` | Trigger evolution |
-| `kb_search_kg` | Query knowledge graph |
-
-### Configuration
-
-```json
-{
-  "mcpServers": {
-    "mempalace": {
-      "type": "stdio",
-      "command": "python",
-      "args": ["-m", "mempalace_evolve.adapters.mcp_server"],
-      "env": {
-        "PYTHONIOENCODING": "utf-8",
-        "MEMPALACE_PATH": ".mempalace",
-        "MEMPALACE_WING": "default"
-      }
-    }
-  }
-}
-```
-
-## Knowledge Graph
-
-### Entity Operations
-
-```python
-kg = memory.get_knowledge_graph()
-
-# Add a relationship
-kg.add_triple("subject", "predicate", "object",
-              valid_from="2025-01-01", source_id="mem_001")
-
-# Query entity
-results = kg.query_entity("subject", as_of="2025-06-01")
-
-# Invalidate a relationship
-kg.invalidate("subject", "predicate", "object", ended="2025-06-15")
-
-# Get all relations
-all_relations = kg.get_all_relations()
-```
-
-### Triple Format
-
-Each triple has:
-- **subject**: Entity (person, project, concept)
-- **predicate**: Relationship type (is_a, uses, depends_on)
-- **object**: Target entity or value
-- **valid_from**: When the fact became true
-- **valid_to**: When the fact stopped being true (None = still valid)
-- **source_id**: Links back to the originating memory
+The MCP tool names intentionally match the primary SDK verbs: `remember`,
+`recall`, `batch_remember`, `batch_recall`, `add_fact`, `query_entity`,
+`forget`, `batch_forget`, `purge_expired`, `compress_old_memories`, and
+`evolve`.

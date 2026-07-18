@@ -78,7 +78,7 @@
 
   <!-- CLI -->
   <rect x="250" y="480" width="300" height="50" rx="10" fill="none" stroke="#f0883e" stroke-width="2" filter="url(#shadow)"/>
-  <text x="400" y="510" text-anchor="middle" fill="#f0883e" font-size="14" font-weight="bold">CLI &amp; Tools (mempalace, mempalace-server, mempalace-mcp)</text>
+  <text x="400" y="510" text-anchor="middle" fill="#f0883e" font-size="14" font-weight="bold">CLI &amp; Tools (mempalace, mempalace-mcp)</text>
 
   <!-- Footer -->
   <text x="400" y="570" text-anchor="middle" fill="#484f58" font-size="11">Built with Python 3.10+  •  MIT License  •  github.com/a2328275243/mempalace-evolve</text>
